@@ -1,12 +1,22 @@
 // Capacitor shim: real plugins on-device, safe mocks in a plain browser
-// (GitHub Pages preview / Playwright). Everything except notifications
-// works identically in both worlds.
+// (GitHub Pages preview / Playwright).
+//
+// Plugin proxies do NOT exist until registerPlugin() is called — the
+// native bridge only injects the transport plus PluginHeaders metadata.
+// We vendor @capacitor/core (self-contained ESM) and register each
+// plugin here; on the web we hand back mocks instead.
 
-const cap = typeof window !== 'undefined' ? window.Capacitor : undefined;
-export const isNative = !!(cap && cap.isNativePlatform && cap.isNativePlatform());
+import { Capacitor, registerPlugin } from './vendor/capacitor-core.js';
 
-function plugin(name) {
-  return isNative && cap.Plugins && cap.Plugins[name] ? cap.Plugins[name] : null;
+export const isNative = Capacitor.isNativePlatform();
+
+function nativePlugin(name) {
+  if (!isNative) return null;
+  try {
+    return Capacitor.isPluginAvailable(name) ? registerPlugin(name) : null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------- LocalNotifications ----------
@@ -25,8 +35,9 @@ const lnMock = {
   async registerActionTypes() {},
   async addListener() { return { remove() {} }; },
 };
-export const LocalNotifications = plugin('LocalNotifications') || lnMock;
-export const notificationsSupported = !!plugin('LocalNotifications');
+const ln = nativePlugin('LocalNotifications');
+export const LocalNotifications = ln || lnMock;
+export const notificationsSupported = !!ln;
 
 // ---------- App (lifecycle) ----------
 const appMock = {
@@ -40,7 +51,7 @@ const appMock = {
   },
   async getInfo() { return { version: 'web-preview', build: '0' }; },
 };
-export const App = plugin('App') || appMock;
+export const App = nativePlugin('App') || appMock;
 
 // ---------- Filesystem + Share (export path) ----------
 const fsMock = {
@@ -56,7 +67,7 @@ const fsMock = {
     return { uri: 'browser-download://' + path };
   },
 };
-export const Filesystem = plugin('Filesystem') || fsMock;
+export const Filesystem = nativePlugin('Filesystem') || fsMock;
 
 const shareMock = {
   async share(opts) {
@@ -64,4 +75,4 @@ const shareMock = {
     console.info('[mock] share', opts);
   },
 };
-export const Share = plugin('Share') || shareMock;
+export const Share = nativePlugin('Share') || shareMock;
