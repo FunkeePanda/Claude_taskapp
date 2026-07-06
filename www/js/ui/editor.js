@@ -155,6 +155,17 @@ function manualFieldsHtml(task) {
         ${NAG_PRESETS.map(p => `<button data-v="${p.value ?? ''}" ${
           (task.reminder?.intervalMin ?? null) === p.value ? 'class="active"' : ''
         }>${p.label}</button>`).join('')}
+        <button data-v="custom" ${isCustomInterval(task.reminder) ? 'class="active"' : ''}>${
+          isCustomInterval(task.reminder) ? esc(shortInterval(task.reminder.intervalMin)) : '⋯'
+        }</button>
+      </div>
+      <div id="f-nag-custom" style="display:${isCustomInterval(task.reminder) ? 'flex' : 'none'}; gap:8px; margin-top:8px; align-items:center">
+        <input type="number" class="input" id="f-nag-n" min="1" inputmode="numeric"
+          value="${isCustomInterval(task.reminder) ? customParts(task.reminder.intervalMin).n : 45}" style="flex:1" />
+        <div class="segment" id="f-nag-unit" style="flex:2">
+          <button data-v="m" ${!isCustomInterval(task.reminder) || customParts(task.reminder.intervalMin).unit === 'm' ? 'class="active"' : ''}>minutes</button>
+          <button data-v="h" ${isCustomInterval(task.reminder) && customParts(task.reminder.intervalMin).unit === 'h' ? 'class="active"' : ''}>hours</button>
+        </div>
       </div>
     </div>
     <div class="field">
@@ -164,7 +175,7 @@ function manualFieldsHtml(task) {
 }
 
 function bindManualFields(sheet, getParsed, cleared) {
-  for (const id of ['f-priority', 'f-effort', 'f-nag']) {
+  for (const id of ['f-priority', 'f-effort', 'f-nag', 'f-nag-unit']) {
     const seg = sheet.querySelector('#' + id);
     seg?.addEventListener('click', (e) => {
       const btn = e.target.closest('button');
@@ -174,9 +185,14 @@ function bindManualFields(sheet, getParsed, cleared) {
       // a manual choice overrides whatever the NL parse said
       if (id === 'f-priority') cleared.add('priority');
       if (id === 'f-effort') cleared.add('effort');
-      if (id === 'f-nag') cleared.add('nag');
+      if (id === 'f-nag' || id === 'f-nag-unit') cleared.add('nag');
+      if (id === 'f-nag') {
+        sheet.querySelector('#f-nag-custom').style.display =
+          btn.dataset.v === 'custom' ? 'flex' : 'none';
+      }
     });
   }
+  sheet.querySelector('#f-nag-n')?.addEventListener('input', () => cleared.add('nag'));
   const date = sheet.querySelector('#f-date');
   const dt = sheet.querySelector('#f-datetime');
   date?.addEventListener('change', () => { cleared.add('due'); cleared.add('time'); if (date.value) dt.value = ''; });
@@ -194,7 +210,22 @@ function syncManualFields(sheet, parsed) {
   };
   setSeg('f-priority', parsed.priority);
   setSeg('f-effort', parsed.effort ?? '');
-  setSeg('f-nag', parsed.reminder?.intervalMin ?? '');
+
+  const interval = parsed.reminder?.intervalMin ?? null;
+  const customBtn = sheet.querySelector('#f-nag button[data-v="custom"]');
+  const customRow = sheet.querySelector('#f-nag-custom');
+  if (isCustomInterval(parsed.reminder)) {
+    setSeg('f-nag', 'custom');
+    const { n, unit } = customParts(interval);
+    sheet.querySelector('#f-nag-n').value = n;
+    setSeg('f-nag-unit', unit);
+    if (customBtn) customBtn.textContent = shortInterval(interval);
+    if (customRow) customRow.style.display = 'flex';
+  } else {
+    setSeg('f-nag', interval ?? '');
+    if (customBtn) customBtn.textContent = '⋯';
+    if (customRow) customRow.style.display = 'none';
+  }
   const date = sheet.querySelector('#f-date');
   const dt = sheet.querySelector('#f-datetime');
   if (date && dt) {
@@ -216,7 +247,12 @@ function collectFields(sheet, parsed) {
     due = d.getTime(); allDay = true;
   }
 
-  const nagV = seg('f-nag');
+  let nagV = seg('f-nag');
+  if (nagV === 'custom') {
+    const n = Math.max(1, parseInt(sheet.querySelector('#f-nag-n')?.value || '0', 10) || 0);
+    const unit = seg('f-nag-unit') || 'm';
+    nagV = n ? String(n * (unit === 'h' ? 60 : 1)) : '';
+  }
   const tags = (sheet.querySelector('#f-tags')?.value || '')
     .split(',').map(s => s.trim().toLowerCase().replace(/^#/, '')).filter(Boolean);
   const parsedTags = parsed?.tags || [];
@@ -255,6 +291,23 @@ function clearField(parsed, type) {
   if (type === 'priority') parsed.priority = 1;
   if (type === 'effort') parsed.effort = null;
   if (type === 'nag') parsed.reminder = null;
+}
+
+const PRESET_VALUES = NAG_PRESETS.map(p => p.value);
+
+function isCustomInterval(reminder) {
+  return !!reminder && !PRESET_VALUES.includes(reminder.intervalMin);
+}
+
+// 90 → {n:90, unit:'m'}; 180 → {n:3, unit:'h'}
+function customParts(intervalMin) {
+  return intervalMin % 60 === 0
+    ? { n: intervalMin / 60, unit: 'h' }
+    : { n: intervalMin, unit: 'm' };
+}
+
+function shortInterval(intervalMin) {
+  return intervalMin % 60 === 0 ? `${intervalMin / 60}h` : `${intervalMin}m`;
 }
 
 function toLocalInputValue(ms) {
