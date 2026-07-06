@@ -45,9 +45,14 @@ to update (that would wipe your data).
 
 ## Web preview
 
-The same app runs at the repo's GitHub Pages URL for a quick look at UI
-changes without installing anything. Everything works there **except
-notifications** — those need the installed app.
+The same app can run at **https://funkeepanda.github.io/Claude_taskapp/**
+for a quick look at UI changes without installing anything. Everything works
+there **except notifications** — those need the installed app.
+
+One-time setup (GitHub doesn't let CI switch this on): open the repo's
+**Settings → Pages**, set Source to **Deploy from a branch**, pick the
+**gh-pages** branch (root folder), and save. The URL goes live a minute later
+and updates automatically on every push after that.
 
 ## How this repo works (no computer required)
 
