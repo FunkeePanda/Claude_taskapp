@@ -43,18 +43,35 @@ jobs:
           VERSION_NAME: 1.0.${{ github.run_number }}
 
       - name: Rename APK
-        run: cp android/app/build/outputs/apk/release/app-release.apk focus-v1.0.${{ github.run_number }}.apk
+        run: cp android/app/build/outputs/apk/release/app-release.apk focus.apk
 
+      # Stable asset name = stable download URL the phone can bookmark:
+      # https://github.com/FunkeePanda/Claude_taskapp/releases/download/latest/focus.apk
       - name: Publish to rolling "latest" release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
           name: Focus v1.0.${{ github.run_number }}
           body: |
-            📲 **Install:** download the `.apk` below on your phone and open it.
+            📲 **Install:** download `focus.apk` below on your phone and open it.
             Updates install straight over the old version — your tasks are kept.
 
             Build ${{ github.run_number }} from `${{ github.ref_name }}` @ ${{ github.sha }}
-          files: focus-v1.0.${{ github.run_number }}.apk
+          files: focus.apk
           prerelease: false
           make_latest: true
+
+      - name: Remove stale assets from the rolling release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: release } = await github.rest.repos.getReleaseByTag({
+              owner: context.repo.owner, repo: context.repo.repo, tag: 'latest',
+            });
+            for (const asset of release.assets) {
+              if (asset.name !== 'focus.apk') {
+                await github.rest.repos.deleteReleaseAsset({
+                  owner: context.repo.owner, repo: context.repo.repo, asset_id: asset.id,
+                });
+              }
+            }
