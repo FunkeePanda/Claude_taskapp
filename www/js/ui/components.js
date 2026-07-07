@@ -1,6 +1,6 @@
 // Shared UI pieces: toast, bottom sheet, confirm, task cards, formatting.
 
-import { setCompleted } from '../model.js';
+import { setCompleted, completeWithDescendants } from '../model.js';
 import { matchesEnergy } from '../focus.js';
 import { fmtInterval } from '../reminders.js';
 
@@ -109,26 +109,47 @@ export function taskChipsHtml(task, energy, now = Date.now()) {
 }
 
 // ---------- Task card ----------
-// onComplete(task) runs after the completion animation; onOpen(task) on tap.
-export function taskCard(task, { energy = null, onComplete, onOpen, index = 0, now = Date.now() } = {}) {
+// onComplete(task, done, flippedIds) runs after the completion animation;
+// onOpen(task) on tap. Subtask extras: parentLabel (context line above the
+// title), progress ({done,total} chip), hasChildren/collapsed/onToggleCollapse
+// (chevron), depth (tree indent).
+export function taskCard(task, {
+  energy = null, onComplete, onOpen, index = 0, now = Date.now(),
+  parentLabel = null, progress = null, hasChildren = false,
+  collapsed = false, onToggleCollapse = null, depth = 0,
+} = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'collapse-wrap';
   wrap.style.setProperty('--i', index);
+  if (depth) wrap.style.marginLeft = Math.min(depth, 3) * 22 + 'px';
+  const progressChip = progress && progress.total
+    ? `<span class="chip progress">${progress.done}/${progress.total}</span>` : '';
   wrap.innerHTML = `
     <div>
       <div class="task-card ${task.completedAt ? 'done' : ''}" data-id="${task.id}">
-        <button class="check prio-${task.priority} ${task.completedAt ? 'checked' : ''}" aria-label="Complete">
+        <button class="check prio-${task.priority} ${task.completedAt ? 'filled' : ''}" aria-label="Complete">
+          <span class="fill"></span>
           <svg viewBox="0 0 24 24"><path d="M5 13l4 4 10-11"/></svg>
         </button>
         <div>
+          ${parentLabel ? `<div class="parent-label">${esc(parentLabel)} ›</div>` : ''}
           <div class="title">${esc(task.title)}</div>
-          <div class="task-meta">${taskChipsHtml(task, energy, now)}</div>
+          <div class="task-meta">${progressChip}${taskChipsHtml(task, energy, now)}</div>
         </div>
+        ${hasChildren ? `
+        <button class="chevron ${collapsed ? 'closed' : ''}" aria-label="${collapsed ? 'Expand' : 'Collapse'} subtasks">
+          <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>` : ''}
       </div>
     </div>`;
 
   const card = wrap.querySelector('.task-card');
   const check = wrap.querySelector('.check');
+
+  wrap.querySelector('.chevron')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    onToggleCollapse?.(task);
+  });
 
   check.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -154,22 +175,77 @@ export function taskCard(task, { energy = null, onComplete, onOpen, index = 0, n
   return wrap;
 }
 
+const REDUCED_MOTION = typeof matchMedia !== 'undefined'
+  && matchMedia('(prefers-reduced-motion: reduce)').matches;
+const BUBBLE_COLORS = ['#a63446', '#c4576a', '#7c2434'];
+
+function spawnBubbles(check, dir) {
+  if (REDUCED_MOTION) return;
+  const n = 7;
+  for (let i = 0; i < n; i++) {
+    const b = document.createElement('span');
+    b.className = 'bubble ' + dir;
+    const ang = (i / n) * Math.PI * 2 + (dir === 'in' ? 0.4 : 0.9);
+    const dist = 26 + (i % 3) * 6;
+    b.style.setProperty('--x', Math.cos(ang) * dist + 'px');
+    b.style.setProperty('--y', Math.sin(ang) * dist + 'px');
+    b.style.setProperty('--s', (6 + (i % 3) * 2) + 'px');
+    b.style.setProperty('--c', BUBBLE_COLORS[i % 3]);
+    b.style.setProperty('--t', (0.3 + (i % 4) * 0.05) + 's');
+    b.style.setProperty('--d', (dir === 'in' ? (i % 4) * 40 : (i % 4) * 25) + 'ms');
+    check.appendChild(b);
+    b.addEventListener('animationend', () => b.remove());
+  }
+}
+
+// Complete: bubbles converge → maroon fill grows from center → white check
+// pops → card collapses. Uncheck: check out → fill shrinks → bubbles burst.
 function completeWithAnimation(task, wrap, check, onComplete) {
+  if (check.dataset.busy) return;
+  check.dataset.busy = '1';
+  const card = wrap.querySelector('.task-card');
   const completing = !task.completedAt;
-  if (!completing) {
-    // un-complete: instant, no ceremony
-    setCompleted(task.id, false);
-    onComplete?.(task, false);
+
+  if (REDUCED_MOTION) {
+    check.classList.toggle('filled', completing);
+    const flipped = completing ? completeWithDescendants(task.id) : [task.id];
+    if (!completing) setCompleted(task.id, false);
+    delete check.dataset.busy;
+    onComplete?.(task, completing, flipped);
     return;
   }
-  check.classList.add('checked');
-  const card = wrap.querySelector('.task-card');
-  card.classList.add('completing');
-  setTimeout(() => {
-    wrap.classList.add('collapsed');
+
+  if (completing) {
+    spawnBubbles(check, 'in');
+    setTimeout(() => check.classList.add('filling'), 160);
     setTimeout(() => {
-      setCompleted(task.id, true);
-      onComplete?.(task, true);
-    }, 240);
-  }, 300);
+      check.classList.remove('filling');
+      check.classList.add('filled', 'checkpop');
+    }, 400);
+    setTimeout(() => {
+      check.classList.remove('checkpop');
+      card.classList.add('completing');
+    }, 620);
+    setTimeout(() => wrap.classList.add('collapsed'), 900);
+    setTimeout(() => {
+      delete check.dataset.busy;
+      const flipped = completeWithDescendants(task.id);
+      onComplete?.(task, true, flipped);
+    }, 1140);
+  } else {
+    check.classList.add('checkout');
+    setTimeout(() => {
+      check.classList.remove('checkpop', 'checkout', 'filled');
+      check.classList.add('unfilling');
+    }, 140);
+    setTimeout(() => {
+      check.classList.remove('unfilling');
+      spawnBubbles(check, 'out');
+    }, 340);
+    setTimeout(() => {
+      delete check.dataset.busy;
+      setCompleted(task.id, false);
+      onComplete?.(task, false, [task.id]);
+    }, 640);
+  }
 }

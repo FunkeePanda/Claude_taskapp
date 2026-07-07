@@ -1,7 +1,17 @@
 /* Compositor-only animations (transform / opacity) */
 
-@keyframes check-draw {
-  to { stroke-dashoffset: 0; }
+/* check-circle sequence: bubbles converge → fill center-out → check pops */
+@keyframes fill-in  { from { transform: scale(0); } to { transform: scale(1); } }
+@keyframes fill-out { from { transform: scale(1); } to { transform: scale(0); } }
+@keyframes check-pop { from { transform: scale(0); } to { transform: scale(1); } }
+@keyframes check-out { from { transform: scale(1); } to { transform: scale(0); } }
+@keyframes bubble-in {
+  from { transform: translate(var(--x), var(--y)) scale(1); opacity: 1; }
+  to   { transform: translate(0, 0) scale(0.4); opacity: 0.9; }
+}
+@keyframes bubble-out {
+  from { transform: translate(0, 0) scale(0.9); opacity: 0.9; }
+  to   { transform: translate(var(--x), var(--y)) scale(0.25); opacity: 0; }
 }
 
 @keyframes fade-up {

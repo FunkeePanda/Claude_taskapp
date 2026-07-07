@@ -5,6 +5,7 @@ import { onChange } from './store.js';
 import { initNotifications, reconcile } from './reminders.js';
 import { renderToday } from './ui/today.js';
 import { renderTasks } from './ui/tasks.js';
+import { renderCalendar } from './ui/calendar.js';
 import { renderSettings } from './ui/settings.js';
 import { openAddSheet } from './ui/editor.js';
 import { toast } from './ui/components.js';
@@ -13,7 +14,7 @@ const view = document.getElementById('view');
 const tabbar = document.getElementById('tabbar');
 const fab = document.getElementById('fab');
 
-const routes = { today: renderToday, tasks: renderTasks, settings: renderSettings };
+const routes = { today: renderToday, tasks: renderTasks, calendar: renderCalendar, settings: renderSettings };
 
 function currentRoute() {
   const r = location.hash.replace('#', '');

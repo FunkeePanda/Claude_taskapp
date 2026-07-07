@@ -1,6 +1,6 @@
 // Today view: greeting, energy toggle, the focused list.
 
-import { allTasks, settings, currentEnergy, setEnergy, setCompleted } from '../model.js';
+import { allTasks, settings, currentEnergy, setEnergy, setCompleted, getTask } from '../model.js';
 import { todayList, isOverdue } from '../focus.js';
 import { taskCard, toast, esc } from './components.js';
 import { openEditSheet } from './editor.js';
@@ -39,23 +39,25 @@ export function renderToday(view, rerender) {
     rerender();
   });
 
-  const onComplete = (task, done) => {
+  const onComplete = (task, done, flipped) => {
     if (done) {
-      toast(`Nice — “${task.title.slice(0, 30)}” done`, {
+      const extra = flipped.length > 1 ? ` (+${flipped.length - 1} subtasks)` : '';
+      toast(`Nice — “${task.title.slice(0, 30)}” done${extra}`, {
         actionLabel: 'Undo',
-        onAction: () => { setCompleted(task.id, false); rerender(); },
+        onAction: () => { flipped.forEach(id => setCompleted(id, false)); rerender(); },
       });
     }
     rerender();
   };
-  const opts = (i) => ({
+  const opts = (i, task) => ({
     energy, index: i, now,
     onComplete,
     onOpen: (t) => openEditSheet(t.id, rerender),
+    parentLabel: task.parentId ? getTask(task.parentId)?.title : null,
   });
 
   const overdueEl = view.querySelector('#overdue-list');
-  overdue.forEach((t, i) => overdueEl.appendChild(taskCard(t, opts(i))));
+  overdue.forEach((t, i) => overdueEl.appendChild(taskCard(t, opts(i, t))));
 
   const focusEl = view.querySelector('#focus-list');
   if (!focus.length && !overdue.length) {
@@ -63,6 +65,6 @@ export function renderToday(view, rerender) {
       ? `<div class="empty"><div class="big">🌤️</div><p>Nothing pressing today.<br>Check the Tasks tab or add something new.</p></div>`
       : `<div class="empty"><div class="big">🎉</div><p>All clear!<br>Tap <strong>+</strong> to capture your first task.<br><span style="font-size:0.8rem;color:var(--text-faint)">Try: “pay rent friday 5pm every 2h”</span></p></div>`;
   } else {
-    focus.forEach((t, i) => focusEl.appendChild(taskCard(t, opts(overdue.length + i))));
+    focus.forEach((t, i) => focusEl.appendChild(taskCard(t, opts(overdue.length + i, t))));
   }
 }

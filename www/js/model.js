@@ -22,6 +22,8 @@ export function createTask(fields) {
     tags: fields.tags || [],
     effort: fields.effort ?? null,    // 'quick' | 'deep' | null
     reminder: fields.reminder ?? null, // { intervalMin, startAt|null } | null
+    parentId: fields.parentId ?? null, // nesting: id of the parent task
+    collapsed: false,                  // UI: children hidden in the Tasks tree
     createdAt: Date.now(),
     completedAt: null,
   };
@@ -42,13 +44,54 @@ export function setCompleted(id, completed) {
   return updateTask(id, { completedAt: completed ? Date.now() : null });
 }
 
+// Deleting a task takes its whole subtree with it.
 export function deleteTask(id) {
   const doc = load();
-  const i = doc.tasks.findIndex(t => t.id === id);
-  if (i === -1) return false;
-  doc.tasks.splice(i, 1);
+  const doomed = new Set([id, ...descendantsOf(id).map(t => t.id)]);
+  const before = doc.tasks.length;
+  doc.tasks = doc.tasks.filter(t => !doomed.has(t.id));
+  if (doc.tasks.length === before) return false;
   save();
   return true;
+}
+
+// ---------- subtasks ----------
+
+export function childrenOf(id) {
+  return load().tasks.filter(t => t.parentId === id);
+}
+
+export function descendantsOf(id) {
+  const out = [];
+  const walk = (pid) => {
+    for (const c of childrenOf(pid)) {
+      out.push(c);
+      walk(c.id);
+    }
+  };
+  walk(id);
+  return out;
+}
+
+// Progress over the whole subtree: { done, total }.
+export function progressOf(id) {
+  const all = descendantsOf(id);
+  return { done: all.filter(t => t.completedAt).length, total: all.length };
+}
+
+// Complete a task and all its open descendants; returns the ids that
+// actually flipped, so an undo can restore exactly those.
+export function completeWithDescendants(id) {
+  const now = Date.now();
+  const flipped = [];
+  for (const t of [getTask(id), ...descendantsOf(id)]) {
+    if (t && !t.completedAt) {
+      t.completedAt = now;
+      flipped.push(t.id);
+    }
+  }
+  save();
+  return flipped;
 }
 
 export function settings() {

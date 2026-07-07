@@ -2,14 +2,14 @@
   "appId": "com.funkeepanda.focus",
   "appName": "Focus",
   "webDir": "www",
-  "backgroundColor": "#12121a",
+  "backgroundColor": "#1b2026",
   "android": {
     "allowMixedContent": false
   },
   "plugins": {
     "LocalNotifications": {
       "smallIcon": "ic_stat_notify",
-      "iconColor": "#6C5CE7"
+      "iconColor": "#A63446"
     }
   }
 }

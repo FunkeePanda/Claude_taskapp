@@ -40,6 +40,11 @@ export function load() {
      || defaults();
   // fill any settings added after the user first saved data
   doc.settings = { ...defaults().settings, ...doc.settings };
+  // fields added after v1: default them on tasks saved by older builds
+  for (const t of doc.tasks) {
+    if (t.parentId === undefined) t.parentId = null;
+    if (t.collapsed === undefined) t.collapsed = false;
+  }
   return doc;
 }
 

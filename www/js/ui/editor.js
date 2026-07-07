@@ -2,7 +2,7 @@
 // live into removable chips. Edit mode exposes the manual controls.
 
 import { parse } from '../parser.js';
-import { createTask, updateTask, deleteTask, getTask } from '../model.js';
+import { createTask, updateTask, deleteTask, getTask, childrenOf, descendantsOf } from '../model.js';
 import { ensurePermission } from '../reminders.js';
 import { notificationsSupported } from '../native.js';
 import { openSheet, closeSheet, confirmSheet, toast, esc } from './components.js';
@@ -16,13 +16,14 @@ const NAG_PRESETS = [
   { label: '2h', value: 120 },
 ];
 
-export function openAddSheet(onSaved) {
+export function openAddSheet(onSaved, { parentId = null } = {}) {
   // cleared: chip types the user explicitly dismissed; won't be re-applied
   const cleared = new Set();
   let parsed = parse('', new Date());
+  const parent = parentId ? getTask(parentId) : null;
 
   const sheet = openSheet(`
-    <h2>New task</h2>
+    <h2>${parent ? `New subtask of “${esc(parent.title.slice(0, 28))}”` : 'New task'}</h2>
     <div class="field">
       <input class="input" id="nl-input" autocomplete="off" enterkeyhint="done"
         placeholder="e.g. pay rent friday 5pm every 2h #bills" />
@@ -65,7 +66,7 @@ export function openAddSheet(onSaved) {
       const ok = await ensurePermission();
       if (!ok) toast('Reminders need notification permission — enable it in Settings');
     }
-    createTask(fields);
+    createTask({ ...fields, parentId });
     closeSheet();
     onSaved?.();
   });
@@ -89,11 +90,19 @@ export function openEditSheet(taskId, onSaved) {
       <input class="input" id="edit-title" value="${esc(task.title)}" />
     </div>
     ${manualFieldsHtml(task)}
-    <div style="display:flex; gap:10px; margin-top:16px">
+    <button class="btn secondary block" id="add-subtask">＋ Add subtask${
+      childrenOf(taskId).length ? ` <span style="color:var(--text-dim);font-weight:500">(${childrenOf(taskId).length} so far)</span>` : ''
+    }</button>
+    <div style="display:flex; gap:10px; margin-top:12px">
       <button class="btn danger" id="delete-task">Delete</button>
       <button class="btn" style="flex:1" id="save-task">Save</button>
     </div>
   `);
+
+  sheet.querySelector('#add-subtask').addEventListener('click', () => {
+    closeSheet();
+    setTimeout(() => openAddSheet(onSaved, { parentId: taskId }), 360);
+  });
 
   bindManualFields(sheet, () => null, new Set());
 
@@ -111,7 +120,11 @@ export function openEditSheet(taskId, onSaved) {
 
   sheet.querySelector('#delete-task').addEventListener('click', async () => {
     closeSheet();
-    if (await confirmSheet(`Delete “${task.title}”?`)) {
+    const subCount = descendantsOf(taskId).length;
+    const msg = subCount
+      ? `Delete “${task.title}” and its ${subCount} subtask${subCount > 1 ? 's' : ''}?`
+      : `Delete “${task.title}”?`;
+    if (await confirmSheet(msg)) {
       deleteTask(taskId);
       onSaved?.();
     }

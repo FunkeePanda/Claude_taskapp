@@ -40,6 +40,10 @@ to update (that would wipe your data).
   22:00–08:00) are respected.
 - **Energy matching** — tag tasks ⚡ quick win or 🧠 deep focus, then tell the
   app how you're feeling; it reorders your list to match (and resets after 4h).
+- **Nested subtasks** — break a project into subtasks (and sub-subtasks) with
+  collapsible trees, progress counts, and cascade-complete with undo.
+- **Calendar** — a month view with a dot on any day that has open tasks;
+  tap a day to see and check off what's due.
 - **Backup** — Settings → Export shares a JSON file (save it to Drive/anywhere);
   Import restores it. Do this now and then — it's your safety net.
 
