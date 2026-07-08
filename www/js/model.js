@@ -22,6 +22,11 @@ export function createTask(fields) {
     tags: fields.tags || [],
     effort: fields.effort ?? null,    // 'quick' | 'deep' | null
     reminder: fields.reminder ?? null, // { intervalMin, startAt|null } | null
+    timer: fields.timer ?? null,       // { durationMin } — how long this should take
+    breaks: fields.breaks ?? null,     // { workMin, breakMin } — work/break cycle
+    muteDuringSession: fields.muteDuringSession ?? true,
+    session: null,                     // { startedAt } while a timer/breaks run
+    color: fields.color ?? null,       // category color (preset palette hex)
     parentId: fields.parentId ?? null, // nesting: id of the parent task
     collapsed: false,                  // UI: children hidden in the Tasks tree
     archived: false,                   // swiped into the Done section
@@ -42,9 +47,10 @@ export function updateTask(id, fields) {
 }
 
 export function setCompleted(id, completed) {
-  // unchecking a task that was moved to Done brings it back out
+  // unchecking a task that was moved to Done brings it back out;
+  // completing one ends any running focus session
   return updateTask(id, completed
-    ? { completedAt: Date.now() }
+    ? { completedAt: Date.now(), session: null }
     : { completedAt: null, archived: false });
 }
 
@@ -100,6 +106,7 @@ export function completeWithDescendants(id) {
   for (const t of [getTask(id), ...descendantsOf(id)]) {
     if (t && !t.completedAt) {
       t.completedAt = now;
+      t.session = null;
       flipped.push(t.id);
     }
   }

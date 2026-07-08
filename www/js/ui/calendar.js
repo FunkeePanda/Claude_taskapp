@@ -106,5 +106,6 @@ export function renderCalendar(view, rerender) {
     onOpen: (task) => openEditSheet(task.id, rerender),
     onAddSubtask: (task) => openAddSheet(rerender, { parentId: task.id }),
     onArchived: () => { toast('Moved to Done'); rerender(); },
+    onSession: () => rerender(),
   })));
 }

@@ -15,12 +15,15 @@ export function renderTasks(view, rerender) {
   const tasks = allTasks();
 
   const tagSet = [...new Set(tasks.flatMap(t => t.tags))].sort();
+  const colorSet = [...new Set(tasks.map(t => t.color).filter(Boolean))];
   const hasEfforts = tasks.some(t => t.effort);
 
   const filterChip = (kind, value, label) => {
     const active = activeFilter?.kind === kind && activeFilter?.value === value;
-    return `<button class="chip ${active ? 'energy-match' : ''}" data-kind="${kind}" data-value="${esc(value)}" style="cursor:pointer">${esc(label)}</button>`;
+    return `<button class="chip ${active ? 'energy-match' : ''}" data-kind="${kind}" data-value="${esc(value)}" style="cursor:pointer">${label}</button>`;
   };
+  const colorChip = (c) => filterChip('color', c,
+    `<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${esc(c)}"></span>`);
 
   const open = tasks.filter(t => !t.completedAt);
   const doneCount = tasks.filter(t => t.completedAt).length;
@@ -28,10 +31,11 @@ export function renderTasks(view, rerender) {
   view.innerHTML = `
     <h1 class="screen-title">Tasks</h1>
     <p class="screen-sub">${open.length} open · ${doneCount} done</p>
-    ${(tagSet.length || hasEfforts) ? `
+    ${(tagSet.length || hasEfforts || colorSet.length) ? `
       <div class="task-meta" id="filters" style="margin-top:12px">
+        ${colorSet.map(colorChip).join('')}
         ${hasEfforts ? filterChip('effort', 'quick', 'quick wins') + filterChip('effort', 'deep', 'deep focus') : ''}
-        ${tagSet.map(t => filterChip('tag', t, '#' + t)).join('')}
+        ${tagSet.map(t => filterChip('tag', t, esc('#' + t))).join('')}
       </div>` : ''}
     <div id="groups"></div>
   `;
@@ -63,6 +67,7 @@ export function renderTasks(view, rerender) {
       onOpen: (t) => openEditSheet(t.id, rerender),
       onAddSubtask: (t) => openAddSheet(rerender, { parentId: t.id }),
       onArchived: () => { toast('Moved to Done'); rerender(); },
+      onSession: () => rerender(),
       hasChildren: kids.length > 0,
       collapsed: task.collapsed,
       onToggleCollapse: (t) => { updateTask(t.id, { collapsed: !t.collapsed }); rerender(); },
@@ -84,6 +89,7 @@ export function renderTasks(view, rerender) {
     let matches = tasks.filter(t => !t.completedAt);
     if (activeFilter.kind === 'tag') matches = matches.filter(t => t.tags.includes(activeFilter.value));
     if (activeFilter.kind === 'effort') matches = matches.filter(t => t.effort === activeFilter.value);
+    if (activeFilter.kind === 'color') matches = matches.filter(t => t.color === activeFilter.value);
     if (!matches.length) {
       groupsEl.innerHTML = `<div class="empty"><p>Nothing matches this filter.</p></div>`;
       return;
@@ -101,7 +107,8 @@ export function renderTasks(view, rerender) {
   // ---------- tree: top-level tasks grouped by due; completed stay put ----
   // (orphan guard: a parentId pointing nowhere renders as top-level)
   const topLevel = tasks.filter(t => (!t.parentId || !getTask(t.parentId)) && !t.archived);
-  const archived = tasks.filter(t => t.archived)
+  // Done shows one card per archived subtree, not every subtask
+  const archived = tasks.filter(t => t.archived && (!t.parentId || !getTask(t.parentId)?.archived))
     .sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0));
 
   // grouping ignores completion so a checked-off task keeps its spot

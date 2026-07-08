@@ -240,6 +240,58 @@ input[type='datetime-local'].input, input[type='date'].input, input[type='time']
   cursor: pointer; display: flex; align-items: center; justify-content: center;
 }
 
+/* ---------- Option toolbar (chips + accordion panels) ---------- */
+.opt-row { display: flex; flex-wrap: wrap; gap: 7px; margin: 4px 0 2px; }
+.opt-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border); background: var(--bg-elev-2);
+  color: var(--text-dim); font-family: inherit; font-size: 0.8rem; font-weight: 600;
+  padding: 8px 12px; border-radius: 999px; cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.opt-chip svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.opt-chip.set { background: var(--accent-soft); color: var(--accent-bright); border-color: transparent; }
+.opt-chip.open { border-color: var(--accent); }
+.opt-dot { display: inline-block; width: 13px; height: 13px; border-radius: 50%; }
+.opt-panel {
+  background: var(--bg-elev-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 12px; margin-top: 10px;
+}
+.opt-panel .input { background: var(--bg-elev); }
+.opt-panel .segment { background: var(--bg-elev); }
+.opt-panel .wheel-row { background: var(--bg-elev); }
+
+.timing-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 9px 0;
+}
+.timing-row + .timing-row { border-top: 1px solid var(--border); }
+.timing-row .label { font-size: 0.9rem; font-weight: 600; }
+.sub2 { font-size: 0.73rem; color: var(--text-faint); margin-top: 1px; }
+
+/* color swatches */
+.swatch-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.swatch {
+  width: 34px; height: 34px; border-radius: 50%; border: none; cursor: pointer;
+  background: var(--sw);
+  display: flex; align-items: center; justify-content: center;
+}
+.swatch.none { background: var(--bg-elev); border: 1px dashed var(--text-faint); color: var(--text-faint); font-size: 0.8rem; }
+.swatch.sel { box-shadow: 0 0 0 2px var(--bg-elev-2), 0 0 0 4px var(--text); }
+
+/* colored category pill on cards */
+.chip.cat { border-color: transparent; }
+.chip.cat .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+
+/* play/stop session button on cards */
+.play-btn {
+  border: 1px solid var(--border); background: var(--bg-elev-2); color: var(--text-dim);
+  width: 34px; height: 34px; border-radius: 50%; cursor: pointer; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.play-btn svg { width: 15px; height: 15px; fill: currentColor; }
+.play-btn.running { background: var(--accent-soft); color: var(--accent-bright); border-color: var(--accent); }
+
 /* ---------- Toggle switch ---------- */
 .switch {
   position: relative; width: 48px; height: 28px; border-radius: 999px;

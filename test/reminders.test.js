@@ -41,10 +41,15 @@ test('anchor in the future starts there', () => {
   assert.equal(occ[0].ts, NOW + 2 * HOUR);
 });
 
-test('due acts as the anchor when no startAt', () => {
-  const t = task({ due: NOW + HOUR, reminder: { intervalMin: 60, startAt: null } });
+test('a future due date does NOT delay intervals — they run from creation', () => {
+  const t = task({
+    due: NOW + 6 * HOUR,
+    createdAt: NOW - 10 * MIN,
+    reminder: { intervalMin: 60, startAt: null },
+  });
   const occ = occurrencesFor(t, NOW);
-  assert.equal(occ[0].ts, NOW + HOUR);
+  assert.equal(occ[0].ts, t.createdAt + 60 * MIN); // first firing within the hour
+  assert.ok(occ[0].ts < t.due);
 });
 
 test('window capped at 24 per task and ~12h', () => {

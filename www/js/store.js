@@ -47,6 +47,11 @@ export function load() {
     // archived: user swiped a completed task into the Done section.
     // Tasks from older builds that were completed are treated as archived.
     if (t.archived === undefined) t.archived = !!t.completedAt;
+    if (t.timer === undefined) t.timer = null;
+    if (t.breaks === undefined) t.breaks = null;
+    if (t.muteDuringSession === undefined) t.muteDuringSession = true;
+    if (t.session === undefined) t.session = null;
+    if (t.color === undefined) t.color = null;
   }
   return doc;
 }

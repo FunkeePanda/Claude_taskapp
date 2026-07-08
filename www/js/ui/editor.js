@@ -1,18 +1,45 @@
 // Add / edit bottom sheet. Add mode is NL-first: one big input parsed
-// live into removable chips. Edit mode exposes the manual controls.
+// live into removable chips. Below it (and in edit mode), options live
+// behind a Todoist-style chip toolbar: Date · Timing · Priority ·
+// Effort · Color · Tags · Notes — tapping a chip unfolds just that
+// option's panel (accordion, one at a time).
 
 import { parse } from '../parser.js';
 import { createTask, updateTask, deleteTask, getTask, childrenOf, descendantsOf } from '../model.js';
-import { ensurePermission } from '../reminders.js';
+import { ensurePermission, fmtInterval } from '../reminders.js';
 import { notificationsSupported } from '../native.js';
 import { openSheet, closeSheet, confirmSheet, toast, esc } from './components.js';
-import { fmtInterval } from '../reminders.js';
 
 const WHEEL_ITEM_H = 36;
-const DEFAULT_INTERVAL = 30; // what the wheel shows when first switched on
+const DEFAULT_INTERVAL = 30;   // minutes shown when "notify" first switches on
+const DEFAULT_TIMER = 30;      // minutes shown when "task timer" first switches on
+const DEFAULT_WORK = 25;       // pomodoro defaults
+const DEFAULT_BREAK = 5;
+
+export const COLORS = [
+  { name: 'rose', v: '#C4576A' },
+  { name: 'ember', v: '#D96C47' },
+  { name: 'amber', v: '#D9A441' },
+  { name: 'moss', v: '#7FA65A' },
+  { name: 'teal', v: '#4A9E8F' },
+  { name: 'steel', v: '#5B84A8' },
+  { name: 'violet', v: '#8A6FB8' },
+  { name: 'slate', v: '#8B97A3' },
+];
+
+const ICONS = {
+  date: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+  timing: '<svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg>',
+  priority: '<svg viewBox="0 0 24 24"><path d="M5 21V4m0 0h13l-2.5 4L18 12H5"/></svg>',
+  effort: '<svg viewBox="0 0 24 24"><path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z"/></svg>',
+  color: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18c-2 0-2-1.5-1-2.5s.5-2.5-1.5-2.5H7"/></svg>',
+  tags: '<svg viewBox="0 0 24 24"><path d="M3 11l9-9 9 9-9 9-9-9z" transform="rotate(45 12 12)"/><circle cx="9" cy="9" r="1.4"/></svg>',
+  notes: '<svg viewBox="0 0 24 24"><path d="M5 3h14v18l-4-3H5V3zM8 8h8M8 12h5"/></svg>',
+};
 
 export function openAddSheet(onSaved, { parentId = null } = {}) {
-  // cleared: chip types the user explicitly dismissed; won't be re-applied
+  // cleared: option types the user took manual control of; the NL parse
+  // no longer touches those controls
   const cleared = new Set();
   let parsed = parse('', new Date());
   const parent = parentId ? getTask(parentId) : null;
@@ -23,15 +50,12 @@ export function openAddSheet(onSaved, { parentId = null } = {}) {
       <input class="input" id="nl-input" autocomplete="off" enterkeyhint="done"
         placeholder="e.g. pay rent friday 5pm every 2h #bills" />
     </div>
-    <div class="task-meta" id="nl-chips" style="min-height:26px"></div>
-    <div class="sub" style="font-size:0.75rem;color:var(--text-faint);margin:6px 0 12px">
-      Understands: friday · tomorrow 5pm · jul 12 · every 30m · high priority · quick · #tag
+    <div class="task-meta" id="nl-chips" style="min-height:24px"></div>
+    <div class="sub" style="font-size:0.75rem;color:var(--text-faint);margin:4px 0 10px">
+      Understands: friday · tomorrow 5pm · jul 12 · every 30m · high priority · #tag
     </div>
-    <details id="more-opts">
-      <summary style="color:var(--text-dim);font-size:0.85rem;cursor:pointer;margin-bottom:12px">More options</summary>
-      ${manualFieldsHtml({})}
-    </details>
-    <button class="btn block" id="save-task" style="margin-top:14px">Add task</button>
+    ${optionToolbar({})}
+    <button class="btn block" id="save-task" style="margin-top:16px">Add task</button>
   `);
 
   const input = sheet.querySelector('#nl-input');
@@ -42,6 +66,7 @@ export function openAddSheet(onSaved, { parentId = null } = {}) {
     for (const type of cleared) clearField(parsed, type);
     syncManualFields(sheet, parsed, cleared);
     chipsEl.innerHTML = parseChipsHtml(parsed);
+    updateChipSummaries(sheet);
   }
 
   input.addEventListener('input', refresh);
@@ -52,7 +77,7 @@ export function openAddSheet(onSaved, { parentId = null } = {}) {
     refresh();
   });
 
-  bindManualFields(sheet, () => parsed, cleared, {});
+  bindOptionToolbar(sheet, cleared, {});
 
   sheet.querySelector('#save-task').addEventListener('click', async () => {
     const fields = collectFields(sheet, parsed);
@@ -84,8 +109,8 @@ export function openEditSheet(taskId, onSaved) {
       <label>Title</label>
       <input class="input" id="edit-title" value="${esc(task.title)}" />
     </div>
-    ${manualFieldsHtml(task)}
-    <button class="btn secondary block" id="add-subtask">+ Add subtask${
+    ${optionToolbar(task)}
+    <button class="btn secondary block" id="add-subtask" style="margin-top:16px">+ Add subtask${
       childrenOf(taskId).length ? ` <span style="color:var(--text-dim);font-weight:500">(${childrenOf(taskId).length} so far)</span>` : ''
     }</button>
     <div style="display:flex; gap:10px; margin-top:12px">
@@ -99,7 +124,7 @@ export function openEditSheet(taskId, onSaved) {
     setTimeout(() => openAddSheet(onSaved, { parentId: taskId }), 360);
   });
 
-  bindManualFields(sheet, () => null, new Set(), task);
+  bindOptionToolbar(sheet, new Set(), task);
 
   sheet.querySelector('#save-task').addEventListener('click', async () => {
     const fields = collectFields(sheet, null);
@@ -126,148 +151,356 @@ export function openEditSheet(taskId, onSaved) {
   });
 }
 
-// ---------- shared pieces ----------
+// ---------------------------------------------------------------------
+// Option toolbar (chips + accordion panels)
+// ---------------------------------------------------------------------
 
-function manualFieldsHtml(task) {
-  const dateVal = task.due ? toLocalInputValue(task.due).slice(0, 10) : '';
-  const timeVal = task.due && !task.allDay ? toLocalInputValue(task.due).slice(11) : '';
-  const hasReminder = !!task.reminder;
+function optionToolbar(task) {
+  const chip = (id, label) =>
+    `<button class="opt-chip" data-panel="${id}" type="button">${ICONS[id]}<span class="opt-label">${label}</span></button>`;
   return `
-    <div class="field">
-      <label>Notes</label>
-      <textarea class="input" id="f-notes" rows="2">${esc(task.notes || '')}</textarea>
+    <div class="opt-row" id="opt-row">
+      ${chip('date', 'Date')}
+      ${chip('timing', 'Timing')}
+      ${chip('priority', 'Priority')}
+      ${chip('effort', 'Effort')}
+      ${chip('color', 'Color')}
+      ${chip('tags', 'Tags')}
+      ${chip('notes', 'Notes')}
     </div>
-    <div class="field">
-      <label>Due — date and/or time</label>
-      <div style="display:flex; gap:8px">
-        <input type="date" class="input" id="f-date" value="${dateVal}" style="flex:3" />
-        <input type="time" class="input" id="f-time" value="${timeVal}" style="flex:2" />
+    <div class="opt-panels">
+      <div class="opt-panel" data-panel="date" hidden>
+        <div style="display:flex; gap:8px">
+          <input type="date" class="input" id="f-date" value="${task.due ? toLocalInputValue(task.due).slice(0, 10) : ''}" style="flex:3" />
+          <input type="time" class="input" id="f-time" value="${task.due && !task.allDay ? toLocalInputValue(task.due).slice(11) : ''}" style="flex:2" />
+        </div>
       </div>
-    </div>
-    <div class="field">
-      <label>Priority</label>
-      <div class="segment" id="f-priority">
-        <button data-v="0" ${task.priority === 0 ? 'class="active"' : ''}>Low</button>
-        <button data-v="1" ${(task.priority ?? 1) === 1 ? 'class="active"' : ''}>Normal</button>
-        <button data-v="2" ${task.priority === 2 ? 'class="active"' : ''}>High</button>
+
+      <div class="opt-panel" data-panel="timing" hidden>
+        <div class="timing-row">
+          <div><div class="label">Notify me every…</div><div class="sub2">Repeating reminder until done</div></div>
+          <button class="switch ${task.reminder ? 'on' : ''}" id="f-notify" role="switch" aria-checked="${!!task.reminder}" aria-label="Interval notifications"></button>
+        </div>
+        <div class="wheel-row" id="f-wheel-row" style="display:${task.reminder ? 'flex' : 'none'}">
+          <div class="wheel" id="f-wheel-h"></div><span class="wheel-unit">hr</span>
+          <div class="wheel" id="f-wheel-m"></div><span class="wheel-unit">min</span>
+        </div>
+
+        <div class="timing-row">
+          <div><div class="label">Task timer</div><div class="sub2">How long should this take?</div></div>
+          <button class="switch ${task.timer ? 'on' : ''}" id="f-timer" role="switch" aria-checked="${!!task.timer}" aria-label="Task timer"></button>
+        </div>
+        <div class="wheel-row" id="f-timer-row" style="display:${task.timer ? 'flex' : 'none'}">
+          <div class="wheel" id="f-timer-h"></div><span class="wheel-unit">hr</span>
+          <div class="wheel" id="f-timer-m"></div><span class="wheel-unit">min</span>
+        </div>
+
+        <div class="timing-row">
+          <div><div class="label">Breaks</div><div class="sub2">Work / break cycle while you focus</div></div>
+          <button class="switch ${task.breaks ? 'on' : ''}" id="f-breaks" role="switch" aria-checked="${!!task.breaks}" aria-label="Breaks"></button>
+        </div>
+        <div id="f-breaks-rows" style="display:${task.breaks ? 'block' : 'none'}">
+          <div class="wheel-row">
+            <span class="wheel-unit" style="width:44px">work</span>
+            <div class="wheel" id="f-work-h"></div><span class="wheel-unit">hr</span>
+            <div class="wheel" id="f-work-m"></div><span class="wheel-unit">min</span>
+          </div>
+          <div class="wheel-row">
+            <span class="wheel-unit" style="width:44px">break</span>
+            <div class="wheel" id="f-break-m"></div><span class="wheel-unit">min</span>
+          </div>
+        </div>
+
+        <div class="timing-row" id="f-mute-row" style="display:${(task.timer || task.breaks) ? 'flex' : 'none'}">
+          <div><div class="label">Silence intervals during a session</div><div class="sub2">Pause “notify me every…” while the timer runs</div></div>
+          <button class="switch ${task.muteDuringSession !== false ? 'on' : ''}" id="f-mute" role="switch" aria-checked="${task.muteDuringSession !== false}" aria-label="Silence intervals during session"></button>
+        </div>
       </div>
-    </div>
-    <div class="field">
-      <label>Effort</label>
-      <div class="segment" id="f-effort">
-        <button data-v="" ${!task.effort ? 'class="active"' : ''}>—</button>
-        <button data-v="quick" ${task.effort === 'quick' ? 'class="active"' : ''}>Quick win</button>
-        <button data-v="deep" ${task.effort === 'deep' ? 'class="active"' : ''}>Deep focus</button>
+
+      <div class="opt-panel" data-panel="priority" hidden>
+        <div class="segment" id="f-priority">
+          <button data-v="0" ${task.priority === 0 ? 'class="active"' : ''} type="button">Low</button>
+          <button data-v="1" ${(task.priority ?? 1) === 1 ? 'class="active"' : ''} type="button">Normal</button>
+          <button data-v="2" ${task.priority === 2 ? 'class="active"' : ''} type="button">High</button>
+        </div>
       </div>
-    </div>
-    <div class="field">
-      <div style="display:flex; align-items:center; justify-content:space-between">
-        <label style="margin-bottom:0">Notify me every…</label>
-        <button class="switch ${hasReminder ? 'on' : ''}" id="f-notify" role="switch"
-          aria-checked="${hasReminder}" aria-label="Interval notifications"></button>
+
+      <div class="opt-panel" data-panel="effort" hidden>
+        <div class="segment" id="f-effort">
+          <button data-v="" ${!task.effort ? 'class="active"' : ''} type="button">—</button>
+          <button data-v="quick" ${task.effort === 'quick' ? 'class="active"' : ''} type="button">Quick win</button>
+          <button data-v="deep" ${task.effort === 'deep' ? 'class="active"' : ''} type="button">Deep focus</button>
+        </div>
       </div>
-      <div class="wheel-row" id="f-wheel-row" style="display:${hasReminder ? 'flex' : 'none'}">
-        <div class="wheel" id="f-wheel-h"></div>
-        <span class="wheel-unit">hr</span>
-        <div class="wheel" id="f-wheel-m"></div>
-        <span class="wheel-unit">min</span>
+
+      <div class="opt-panel" data-panel="color" hidden>
+        <div class="swatch-row" id="f-color">
+          <button class="swatch none ${!task.color ? 'sel' : ''}" data-v="" aria-label="No color" type="button">✕</button>
+          ${COLORS.map(c => `<button class="swatch ${task.color === c.v ? 'sel' : ''}" data-v="${c.v}" style="--sw:${c.v}" aria-label="${c.name}" type="button"></button>`).join('')}
+        </div>
       </div>
-    </div>
-    <div class="field">
-      <label>Tags (comma separated)</label>
-      <input class="input" id="f-tags" value="${esc((task.tags || []).join(', '))}" placeholder="errands, work" />
+
+      <div class="opt-panel" data-panel="tags" hidden>
+        <input class="input" id="f-tags" value="${esc((task.tags || []).join(', '))}" placeholder="errands, work (comma separated)" />
+      </div>
+
+      <div class="opt-panel" data-panel="notes" hidden>
+        <textarea class="input" id="f-notes" rows="3" placeholder="Anything worth remembering…">${esc(task.notes || '')}</textarea>
+      </div>
     </div>`;
 }
 
-// ---------- interval wheel ----------
+function bindOptionToolbar(sheet, cleared, task) {
+  // accordion: one open panel at a time
+  sheet.querySelector('#opt-row').addEventListener('click', (e) => {
+    const chip = e.target.closest('.opt-chip');
+    if (!chip) return;
+    const id = chip.dataset.panel;
+    for (const p of sheet.querySelectorAll('.opt-panel')) {
+      p.hidden = p.dataset.panel === id ? !p.hidden : true;
+    }
+    for (const c of sheet.querySelectorAll('.opt-chip')) {
+      c.classList.toggle('open', c === chip && !sheet.querySelector(`.opt-panel[data-panel="${id}"]`).hidden);
+    }
+    // re-showing a panel: its wheels lost their scroll while hidden —
+    // restore the visual from the cached values
+    const shown = sheet.querySelector(`.opt-panel[data-panel="${id}"]:not([hidden])`);
+    if (shown) {
+      requestAnimationFrame(() => {
+        for (const w of shown.querySelectorAll('.wheel')) setWheel(w, wheelValue(w));
+      });
+    }
+  });
 
+  // segments
+  for (const id of ['f-priority', 'f-effort']) {
+    sheet.querySelector('#' + id)?.addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      const seg = sheet.querySelector('#' + id);
+      seg.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      cleared.add(id === 'f-priority' ? 'priority' : 'effort');
+      updateChipSummaries(sheet);
+    });
+  }
+
+  // color swatches
+  sheet.querySelector('#f-color').addEventListener('click', (e) => {
+    const sw = e.target.closest('.swatch');
+    if (!sw) return;
+    sheet.querySelectorAll('.swatch').forEach(s => s.classList.remove('sel'));
+    sw.classList.add('sel');
+    updateChipSummaries(sheet);
+  });
+
+  // date/time
+  for (const id of ['f-date', 'f-time']) {
+    sheet.querySelector('#' + id)?.addEventListener('change', () => {
+      cleared.add('due'); cleared.add('time');
+      updateChipSummaries(sheet);
+    });
+  }
+
+  // tags / notes summaries
+  sheet.querySelector('#f-tags').addEventListener('input', () => updateChipSummaries(sheet));
+  sheet.querySelector('#f-notes').addEventListener('input', () => updateChipSummaries(sheet));
+
+  // ----- timing switches + wheels -----
+  const wheels = [
+    ['f-wheel-h', 24], ['f-wheel-m', 60],
+    ['f-timer-h', 24], ['f-timer-m', 60],
+    ['f-work-h', 24], ['f-work-m', 60],
+    ['f-break-m', 60],
+  ];
+  for (const [id, count] of wheels) buildWheel(sheet.querySelector('#' + id), count);
+
+  requestAnimationFrame(() => {
+    if (task.reminder) positionWheels(sheet, 'f-wheel', task.reminder.intervalMin);
+    if (task.timer) positionWheels(sheet, 'f-timer', task.timer.durationMin);
+    if (task.breaks) {
+      positionWheels(sheet, 'f-work', task.breaks.workMin);
+      setWheel(sheet.querySelector('#f-break-m'), task.breaks.breakMin);
+    }
+  });
+
+  const muteRow = sheet.querySelector('#f-mute-row');
+  const refreshMuteRow = () => {
+    const anySession = sheet.querySelector('#f-timer').classList.contains('on')
+      || sheet.querySelector('#f-breaks').classList.contains('on');
+    muteRow.style.display = anySession ? 'flex' : 'none';
+  };
+
+  // wheel defaults land a frame later — refresh the chip summary after
+  const resummarize = () => setTimeout(() => updateChipSummaries(sheet), 120);
+
+  bindSwitch(sheet, '#f-notify', '#f-wheel-row', () => {
+    cleared.add('nag');
+    if (wheelsAtZero(sheet, 'f-wheel')) requestAnimationFrame(() => positionWheels(sheet, 'f-wheel', DEFAULT_INTERVAL));
+    resummarize();
+  });
+  bindSwitch(sheet, '#f-timer', '#f-timer-row', () => {
+    if (wheelsAtZero(sheet, 'f-timer')) requestAnimationFrame(() => positionWheels(sheet, 'f-timer', DEFAULT_TIMER));
+    refreshMuteRow();
+    resummarize();
+  });
+  bindSwitch(sheet, '#f-breaks', '#f-breaks-rows', () => {
+    if (wheelsAtZero(sheet, 'f-work') && wheelValue(sheet.querySelector('#f-break-m')) === 0) {
+      requestAnimationFrame(() => {
+        positionWheels(sheet, 'f-work', DEFAULT_WORK);
+        setWheel(sheet.querySelector('#f-break-m'), DEFAULT_BREAK);
+      });
+    }
+    refreshMuteRow();
+    resummarize();
+  });
+  bindSwitch(sheet, '#f-mute', null, () => {});
+
+  for (const [id] of wheels) {
+    sheet.querySelector('#' + id).addEventListener('scroll', (e) => {
+      if (!e.target.dataset.prog) {
+        e.target.dataset.val = String(Math.max(0, Math.round(e.target.scrollTop / WHEEL_ITEM_H)));
+        if (id.startsWith('f-wheel')) cleared.add('nag');
+        updateChipSummaries(sheet);
+      }
+    }, { passive: true });
+  }
+
+  updateChipSummaries(sheet);
+}
+
+function bindSwitch(sheet, sel, revealSel, onChange) {
+  const toggle = sheet.querySelector(sel);
+  toggle.addEventListener('click', () => {
+    const on = toggle.classList.toggle('on');
+    toggle.setAttribute('aria-checked', on);
+    if (revealSel) {
+      const el = sheet.querySelector(revealSel);
+      el.style.display = on ? (el.classList.contains('wheel-row') ? 'flex' : 'block') : 'none';
+      if (on) {
+        // wheels hidden by display:none lost their scroll — restore it
+        requestAnimationFrame(() => {
+          for (const w of el.querySelectorAll('.wheel')) setWheel(w, wheelValue(w));
+        });
+      }
+    }
+    onChange(on);
+    updateChipSummaries(sheet);
+  });
+}
+
+// ---------- wheels ----------
+
+// The wheel's true value lives in dataset.val, NOT in scrollTop — a
+// hidden panel resets its scroll containers to 0, which would silently
+// wipe the chosen time. scrollTop is only the visual.
 function buildWheel(el, count) {
+  if (!el) return;
+  el.dataset.val = '0';
   el.innerHTML = `<div class="pad"></div>${
     Array.from({ length: count }, (_, i) => `<div class="item">${i}</div>`).join('')
   }<div class="pad"></div>`;
 }
 
 function wheelValue(el) {
-  return Math.max(0, Math.round(el.scrollTop / WHEEL_ITEM_H));
+  return Math.max(0, parseInt(el.dataset.val || '0', 10));
 }
 
 function setWheel(el, value) {
-  // programmatic moves fire 'scroll' too — flag them so the listener can
+  // programmatic moves fire 'scroll' too — flag them so listeners can
   // tell them apart from the user's finger
+  el.dataset.val = String(value);
   el.dataset.prog = '1';
   el.scrollTop = value * WHEEL_ITEM_H;
   setTimeout(() => delete el.dataset.prog, 80);
 }
 
-function setupIntervalControl(sheet, cleared, initialMin) {
-  const toggle = sheet.querySelector('#f-notify');
-  const row = sheet.querySelector('#f-wheel-row');
-  const wheelH = sheet.querySelector('#f-wheel-h');
-  const wheelM = sheet.querySelector('#f-wheel-m');
-  buildWheel(wheelH, 24);  // 0–23 hours
-  buildWheel(wheelM, 60);  // 0–59 minutes
+function positionWheels(sheet, prefix, minutes) {
+  setWheel(sheet.querySelector(`#${prefix}-h`), Math.floor(minutes / 60));
+  setWheel(sheet.querySelector(`#${prefix}-m`), minutes % 60);
+}
 
-  const position = (min) => {
-    setWheel(wheelH, Math.floor(min / 60));
-    setWheel(wheelM, min % 60);
+function wheelsAtZero(sheet, prefix) {
+  return wheelValue(sheet.querySelector(`#${prefix}-h`)) === 0
+    && wheelValue(sheet.querySelector(`#${prefix}-m`)) === 0;
+}
+
+function readWheelMinutes(sheet, prefix) {
+  return wheelValue(sheet.querySelector(`#${prefix}-h`)) * 60
+    + wheelValue(sheet.querySelector(`#${prefix}-m`));
+}
+
+// ---------- chip summaries ----------
+
+function updateChipSummaries(sheet) {
+  const set = (panel, active, summary) => {
+    const chip = sheet.querySelector(`.opt-chip[data-panel="${panel}"]`);
+    if (!chip) return;
+    chip.classList.toggle('set', !!active);
+    const label = chip.querySelector('.opt-label');
+    label.innerHTML = summary || label.dataset.base || label.textContent;
+    if (!label.dataset.base) label.dataset.base = panel[0].toUpperCase() + panel.slice(1);
+    if (!active) label.textContent = label.dataset.base;
   };
-  if (initialMin) requestAnimationFrame(() => position(initialMin));
 
-  toggle.addEventListener('click', () => {
-    const on = toggle.classList.toggle('on');
-    toggle.setAttribute('aria-checked', on);
-    row.style.display = on ? 'flex' : 'none';
-    cleared.add('nag');
-    if (on && wheelValue(wheelH) === 0 && wheelValue(wheelM) === 0) {
-      requestAnimationFrame(() => position(DEFAULT_INTERVAL));
-    }
-  });
-  for (const w of [wheelH, wheelM]) {
-    w.addEventListener('scroll', () => {
-      if (!w.dataset.prog) cleared.add('nag');
-    }, { passive: true });
+  const dateV = sheet.querySelector('#f-date')?.value;
+  const timeV = sheet.querySelector('#f-time')?.value;
+  let dateSummary = '';
+  if (dateV) {
+    const d = new Date(dateV + 'T12:00');
+    dateSummary = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    if (timeV) dateSummary += ' ' + timeV;
+  } else if (timeV) dateSummary = timeV;
+  set('date', dateSummary, esc(dateSummary));
+
+  const parts = [];
+  if (sheet.querySelector('#f-notify').classList.contains('on')) {
+    parts.push('every ' + fmtShort(readWheelMinutes(sheet, 'f-wheel')));
   }
-}
-
-function readIntervalControl(sheet) {
-  const toggle = sheet.querySelector('#f-notify');
-  if (!toggle?.classList.contains('on')) return null;
-  const min = wheelValue(sheet.querySelector('#f-wheel-h')) * 60
-    + wheelValue(sheet.querySelector('#f-wheel-m'));
-  return { intervalMin: Math.max(1, min), startAt: null };
-}
-
-function bindManualFields(sheet, getParsed, cleared, task = {}) {
-  for (const id of ['f-priority', 'f-effort']) {
-    const seg = sheet.querySelector('#' + id);
-    seg?.addEventListener('click', (e) => {
-      const btn = e.target.closest('button');
-      if (!btn) return;
-      seg.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      // a manual choice overrides whatever the NL parse said
-      cleared.add(id === 'f-priority' ? 'priority' : 'effort');
-    });
+  if (sheet.querySelector('#f-timer').classList.contains('on')) {
+    parts.push(fmtShort(readWheelMinutes(sheet, 'f-timer')) + ' timer');
   }
-  setupIntervalControl(sheet, cleared, task.reminder?.intervalMin ?? 0);
-  sheet.querySelector('#f-date')?.addEventListener('change', () => { cleared.add('due'); cleared.add('time'); });
-  sheet.querySelector('#f-time')?.addEventListener('change', () => { cleared.add('due'); cleared.add('time'); });
+  if (sheet.querySelector('#f-breaks').classList.contains('on')) {
+    parts.push(fmtShort(readWheelMinutes(sheet, 'f-work')) + '/' + wheelValue(sheet.querySelector('#f-break-m')) + 'm');
+  }
+  set('timing', parts.length, esc(parts.join(' · ')));
+
+  const prio = sheet.querySelector('#f-priority button.active')?.dataset.v;
+  set('priority', prio === '0' || prio === '2', prio === '2' ? 'High' : 'Low');
+
+  const eff = sheet.querySelector('#f-effort button.active')?.dataset.v;
+  set('effort', !!eff, eff === 'quick' ? 'Quick win' : 'Deep focus');
+
+  const color = sheet.querySelector('#f-color .swatch.sel:not(.none)')?.dataset.v;
+  set('color', !!color, color ? `<span class="opt-dot" style="background:${color}"></span>` : '');
+
+  const tags = (sheet.querySelector('#f-tags')?.value || '').split(',').map(s => s.trim()).filter(Boolean);
+  set('tags', tags.length, tags.length ? esc('#' + tags[0] + (tags.length > 1 ? ` +${tags.length - 1}` : '')) : '');
+
+  set('notes', (sheet.querySelector('#f-notes')?.value || '').trim().length, 'Notes ●');
 }
 
-// When the NL parse changes, reflect it into the manual controls — but a
-// control the user already touched (its type is in `cleared`) is theirs
-// now, and the parse must keep its hands off it.
+function fmtShort(min) {
+  if (min >= 60) {
+    const h = Math.floor(min / 60), m = min % 60;
+    return m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
+  }
+  return `${min}m`;
+}
+
+// ---------- NL parse ↔ controls ----------
+
+// Reflect the parse into controls the user has NOT touched (their manual
+// edits, tracked in `cleared`, always win).
 function syncManualFields(sheet, parsed, cleared) {
-  const setSeg = (id, val) => {
-    const seg = sheet.querySelector('#' + id);
-    if (!seg) return;
-    seg.querySelectorAll('button').forEach(b =>
-      b.classList.toggle('active', b.dataset.v === String(val ?? '')));
-  };
-  if (!cleared.has('priority')) setSeg('f-priority', parsed.priority);
-  if (!cleared.has('effort')) setSeg('f-effort', parsed.effort ?? '');
-
-  // reminder → switch + wheels
+  if (!cleared.has('priority')) {
+    sheet.querySelectorAll('#f-priority button').forEach(b =>
+      b.classList.toggle('active', b.dataset.v === String(parsed.priority)));
+  }
+  if (!cleared.has('effort')) {
+    sheet.querySelectorAll('#f-effort button').forEach(b =>
+      b.classList.toggle('active', b.dataset.v === String(parsed.effort ?? '')));
+  }
   if (!cleared.has('nag')) {
     const toggle = sheet.querySelector('#f-notify');
     const row = sheet.querySelector('#f-wheel-row');
@@ -276,25 +509,18 @@ function syncManualFields(sheet, parsed, cleared) {
     toggle.classList.toggle('on', on);
     toggle.setAttribute('aria-checked', on);
     row.style.display = on ? 'flex' : 'none';
-    if (on) {
-      setWheel(sheet.querySelector('#f-wheel-h'), Math.floor(interval / 60));
-      setWheel(sheet.querySelector('#f-wheel-m'), interval % 60);
-    }
+    if (on) positionWheels(sheet, 'f-wheel', interval);
   }
-
-  // due → single date + optional time row
   if (!cleared.has('due') && !cleared.has('time')) {
     const date = sheet.querySelector('#f-date');
     const time = sheet.querySelector('#f-time');
-    if (date && time) {
-      if (parsed.due) {
-        const v = toLocalInputValue(parsed.due);
-        date.value = v.slice(0, 10);
-        time.value = parsed.allDay ? '' : v.slice(11);
-      } else {
-        date.value = '';
-        time.value = '';
-      }
+    if (parsed.due) {
+      const v = toLocalInputValue(parsed.due);
+      date.value = v.slice(0, 10);
+      time.value = parsed.allDay ? '' : v.slice(11);
+    } else {
+      date.value = '';
+      time.value = '';
     }
   }
 }
@@ -320,6 +546,20 @@ function collectFields(sheet, parsed) {
     allDay = false;
   }
 
+  const on = (sel) => sheet.querySelector(sel).classList.contains('on');
+  const reminder = on('#f-notify')
+    ? { intervalMin: Math.max(1, readWheelMinutes(sheet, 'f-wheel')), startAt: null }
+    : null;
+  const timer = on('#f-timer')
+    ? { durationMin: Math.max(1, readWheelMinutes(sheet, 'f-timer')) }
+    : null;
+  const breaks = on('#f-breaks')
+    ? {
+        workMin: Math.max(1, readWheelMinutes(sheet, 'f-work')),
+        breakMin: Math.max(1, wheelValue(sheet.querySelector('#f-break-m'))),
+      }
+    : null;
+
   const tags = (sheet.querySelector('#f-tags')?.value || '')
     .split(',').map(s => s.trim().toLowerCase().replace(/^#/, '')).filter(Boolean);
   const parsedTags = parsed?.tags || [];
@@ -330,7 +570,9 @@ function collectFields(sheet, parsed) {
     due, allDay,
     priority: parseInt(seg('f-priority') || '1', 10),
     effort: seg('f-effort') || null,
-    reminder: readIntervalControl(sheet),
+    reminder, timer, breaks,
+    muteDuringSession: on('#f-mute'),
+    color: sheet.querySelector('#f-color .swatch.sel:not(.none)')?.dataset.v || null,
     tags: [...new Set([...parsedTags, ...tags])],
   };
 }

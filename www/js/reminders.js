@@ -36,14 +36,15 @@ export function isQuietTime(ts, quietStart, quietEnd) {
   return qs < qe ? (mins >= qs && mins < qe) : (mins >= qs || mins < qe);
 }
 
-// Upcoming firings for one task: anchored to startAt ?? due ?? createdAt,
-// spaced intervalMin apart, only future, only inside the window, quiet
-// hours skipped.
+// Upcoming firings for one task: anchored to startAt (snooze) or the
+// task's creation — NOT the due date. Once the switch is on, intervals
+// fire persistently until the task is done or the user turns them off;
+// only snooze and quiet hours pause them.
 export function occurrencesFor(task, now, settings = {}) {
   if (!task.reminder || task.completedAt) return [];
   const interval = task.reminder.intervalMin * MIN;
   if (interval <= 0) return [];
-  const anchor = task.reminder.startAt ?? task.due ?? task.createdAt ?? now;
+  const anchor = task.reminder.startAt ?? task.createdAt ?? now;
 
   let k = anchor > now ? 0 : Math.ceil((now - anchor) / interval);
   if (anchor + k * interval <= now) k += 1;
@@ -62,12 +63,80 @@ export function occurrencesFor(task, now, settings = {}) {
   return out;
 }
 
-// Global plan across all tasks, earliest-first, capped.
+// Global plan across all tasks, earliest-first, capped. Interval nags
+// are skipped for tasks whose running session asks for silence.
 export function planAll(tasks, now, settings = {}) {
   const all = [];
-  for (const t of tasks) all.push(...occurrencesFor(t, now, settings));
+  for (const t of tasks) {
+    if (t.session && t.muteDuringSession !== false && sessionActive(t, now)) continue;
+    all.push(...occurrencesFor(t, now, settings));
+  }
   all.sort((a, b) => a.ts - b.ts);
   return all.slice(0, MAX_TOTAL);
+}
+
+// ---------------------------------------------------------------------
+// Focus sessions (task timer / break cycles) — pure math
+// ---------------------------------------------------------------------
+
+const SESSION_SLOT_BASE = 80;   // nids taskId*100+80..99; nags use 0..23
+const MAX_SESSION_EVENTS = 16;
+
+// When does a session end on its own? Only when a task timer caps the
+// total work time; break-only sessions run until stopped.
+export function sessionEndsAt(task) {
+  if (!task.session || !task.timer) return null;
+  const target = task.timer.durationMin * MIN;
+  if (!task.breaks) return task.session.startedAt + target;
+  const { workMin, breakMin } = task.breaks;
+  const fullCycles = Math.ceil(task.timer.durationMin / workMin) - 1;
+  return task.session.startedAt + target + Math.max(0, fullCycles) * breakMin * MIN;
+}
+
+export function sessionActive(task, now) {
+  if (!task.session || task.completedAt) return false;
+  const ends = sessionEndsAt(task);
+  return ends == null || now < ends;
+}
+
+// Notification boundaries for a running session: alternating break /
+// back-to-work marks (if breaks configured) and a final time's-up (if a
+// task timer is set). Future events only, capped.
+export function sessionNotifications(task, now) {
+  if (!sessionActive(task, now)) return [];
+  const out = [];
+  const push = (ts, title, body) => {
+    if (ts > now && out.length < MAX_SESSION_EVENTS && ts <= now + WINDOW_MS) {
+      out.push({ nid: task.id * SLOTS_PER_TASK + SESSION_SLOT_BASE + out.length, ts, title, body, taskId: task.id });
+    }
+  };
+  const target = task.timer ? task.timer.durationMin * MIN : Infinity;
+
+  if (!task.breaks) {
+    if (task.timer) {
+      push(task.session.startedAt + target, 'Time’s up',
+        `Your ${fmtInterval(task.timer.durationMin)} for “${task.title}” is done`);
+    }
+    return out;
+  }
+
+  const work = task.breaks.workMin * MIN;
+  const brk = task.breaks.breakMin * MIN;
+  let t = task.session.startedAt;
+  let workDone = 0;
+  while (out.length < MAX_SESSION_EVENTS && t <= now + WINDOW_MS) {
+    const chunk = Math.min(work, target - workDone);
+    t += chunk;
+    workDone += chunk;
+    if (workDone >= target) {
+      push(t, 'Time’s up', `Your ${fmtInterval(task.timer.durationMin)} for “${task.title}” is done`);
+      break;
+    }
+    push(t, 'Break time', `Take ${task.breaks.breakMin} min — you earned it`);
+    t += brk;
+    push(t, 'Back to work', `“${task.title}” — next stretch: ${fmtInterval(task.breaks.workMin)}`);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------
@@ -133,11 +202,28 @@ export async function initNotifications(onDataChanged) {
   });
 }
 
+// Start/stop a focus session (task timer / break cycle) on a task.
+export async function startSession(id) {
+  updateTask(id, { session: { startedAt: Date.now() } });
+  await reconcile();
+}
+
+export async function stopSession(id) {
+  updateTask(id, { session: null });
+  await reconcile();
+}
+
 let reconciling = false;
 
 // Cancel-everything-then-reschedule: simplest idempotent sync between
 // the task list and Android's pending alarms.
 export async function reconcile(now = Date.now()) {
+  // sessions that ran out (task timer elapsed) end themselves, so
+  // muting/play-state don't linger — do this even in the web preview
+  for (const t of allTasks()) {
+    if (t.session && !sessionActive(t, now)) updateTask(t.id, { session: null });
+  }
+
   if (!notificationsSupported || reconciling) return;
   reconciling = true;
   try {
@@ -151,26 +237,38 @@ export async function reconcile(now = Date.now()) {
       });
     }
 
-    const plan = planAll(allTasks(), now, getSettings());
-    if (!plan.length) return;
-
     const byId = new Map(allTasks().map(t => [t.id, t]));
-    await LocalNotifications.schedule({
-      notifications: plan.map(o => {
-        const task = byId.get(o.taskId);
-        return {
-          id: o.nid,
-          channelId: 'reminders',
-          title: task.title,
-          body: `Repeats every ${fmtInterval(task.reminder.intervalMin)} — tap ✓ Done to stop`,
-          schedule: { at: new Date(o.ts), allowWhileIdle: true },
-          actionTypeId: 'nag',
-          extra: { taskId: task.id },
-          smallIcon: 'ic_stat_notify',
-          autoCancel: true,
-        };
-      }),
+    const nags = planAll(allTasks(), now, getSettings()).map(o => {
+      const task = byId.get(o.taskId);
+      return {
+        id: o.nid,
+        channelId: 'reminders',
+        title: task.title,
+        body: `Repeats every ${fmtInterval(task.reminder.intervalMin)} — tap ✓ Done to stop`,
+        schedule: { at: new Date(o.ts), allowWhileIdle: true },
+        actionTypeId: 'nag',
+        extra: { taskId: task.id },
+        smallIcon: 'ic_stat_notify',
+        autoCancel: true,
+      };
     });
+
+    const sessions = allTasks()
+      .filter(t => sessionActive(t, now))
+      .flatMap(t => sessionNotifications(t, now))
+      .map(o => ({
+        id: o.nid,
+        channelId: 'reminders',
+        title: o.title,
+        body: o.body,
+        schedule: { at: new Date(o.ts), allowWhileIdle: true },
+        extra: { taskId: o.taskId },
+        smallIcon: 'ic_stat_notify',
+        autoCancel: true,
+      }));
+
+    const all = [...nags, ...sessions];
+    if (all.length) await LocalNotifications.schedule({ notifications: all });
   } finally {
     reconciling = false;
   }

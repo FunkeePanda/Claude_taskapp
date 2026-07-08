@@ -50,6 +50,7 @@ export function renderToday(view, rerender) {
     onOpen: (t) => openEditSheet(t.id, rerender),
     onAddSubtask: (t) => openAddSheet(rerender, { parentId: t.id }),
     onArchived: () => { toast('Moved to Done'); rerender(); },
+    onSession: () => rerender(),
     parentLabel: task.parentId ? getTask(task.parentId)?.title : null,
   });
 

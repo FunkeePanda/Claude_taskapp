@@ -1,7 +1,7 @@
 // Shared UI pieces: toast, bottom sheet, confirm, task cards, formatting.
 
 import { setCompleted, completeWithDescendants, setArchived } from '../model.js';
-import { fmtInterval } from '../reminders.js';
+import { fmtInterval, startSession, stopSession, sessionActive } from '../reminders.js';
 
 export function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({
@@ -79,7 +79,11 @@ export function closeSheet() {
   scrim.classList.remove('open');
   sheet.classList.remove('open');
   sheet.style.transform = 'translateY(105%)'; // wins over any drag offset
-  setTimeout(() => { root.innerHTML = ''; }, 340);
+  // only clear the root if THIS sheet is still the one in it — a new
+  // sheet (e.g. the delete confirmation) may have replaced it meanwhile
+  setTimeout(() => {
+    if (root.querySelector('.sheet') === sheet) root.innerHTML = '';
+  }, 340);
 }
 
 export function confirmSheet(message, confirmLabel = 'Delete') {
@@ -124,8 +128,12 @@ export function fmtDue(task, now = Date.now()) {
 
 export function taskChipsHtml(task, energy, now = Date.now()) {
   const chips = [];
+  if (task.color) {
+    chips.push(`<span class="chip cat" style="--c:${esc(task.color)}; background:color-mix(in srgb, ${esc(task.color)} 20%, transparent)"><span class="dot"></span></span>`);
+  }
   const due = fmtDue(task, now);
   if (due) chips.push(`<span class="chip due ${due.cls}">${esc(due.text)}</span>`);
+  if (sessionActive(task, now)) chips.push('<span class="chip nag">session running</span>');
   if (task.priority === 2) chips.push('<span class="chip prio-high">high</span>');
   if (task.effort) chips.push(`<span class="chip effort">${task.effort === 'quick' ? 'quick win' : 'deep focus'}</span>`);
   if (task.reminder) chips.push(`<span class="chip nag">every ${esc(fmtInterval(task.reminder.intervalMin))}</span>`);
@@ -142,7 +150,7 @@ export function taskCard(task, {
   energy = null, onComplete, onOpen, index = 0, now = Date.now(),
   parentLabel = null, progress = null, hasChildren = false,
   collapsed = false, onToggleCollapse = null, depth = 0,
-  onAddSubtask = null, onArchived = null,
+  onAddSubtask = null, onArchived = null, onSession = null,
 } = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'collapse-wrap';
@@ -162,10 +170,18 @@ export function taskCard(task, {
           <div class="title">${esc(task.title)}</div>
           <div class="task-meta">${progressChip}${taskChipsHtml(task, energy, now)}</div>
         </div>
-        ${hasChildren ? `
-        <button class="chevron ${collapsed ? 'closed' : ''}" aria-label="${collapsed ? 'Expand' : 'Collapse'} subtasks">
-          <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>` : ''}
+        <div style="display:flex; align-items:center; gap:2px">
+          ${(task.timer || task.breaks) && !task.completedAt ? `
+          <button class="play-btn ${task.session ? 'running' : ''}" aria-label="${task.session ? 'Stop session' : 'Start session'}">
+            ${task.session
+              ? '<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>'
+              : '<svg viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z"/></svg>'}
+          </button>` : ''}
+          ${hasChildren ? `
+          <button class="chevron ${collapsed ? 'closed' : ''}" aria-label="${collapsed ? 'Expand' : 'Collapse'} subtasks">
+            <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>` : ''}
+        </div>
       </div>
     </div>`;
 
@@ -175,6 +191,18 @@ export function taskCard(task, {
   wrap.querySelector('.chevron')?.addEventListener('click', (e) => {
     e.stopPropagation();
     onToggleCollapse?.(task);
+  });
+
+  wrap.querySelector('.play-btn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (task.session) {
+      stopSession(task.id);
+      toast('Session stopped');
+    } else {
+      startSession(task.id);
+      toast(task.breaks ? 'Session started — first break coming up' : 'Timer started');
+    }
+    onSession?.(task);
   });
 
   check.addEventListener('click', (e) => {

@@ -21,10 +21,19 @@ function currentRoute() {
   return routes[r] ? r : 'today';
 }
 
+// Re-render the current view WITHOUT the app feeling like it reset:
+// scroll position and open <details> sections survive, and entry
+// animations don't replay (those belong to navigation only).
 function rerender() {
+  const scrollY = window.scrollY;
+  const openDetails = [...view.querySelectorAll('details')].map(d => d.open);
   routes[currentRoute()](view, rerender);
+  const details = [...view.querySelectorAll('details')];
+  openDetails.forEach((open, i) => { if (details[i]) details[i].open = open; });
+  window.scrollTo(0, scrollY);
 }
 
+let enteringTimer;
 function navigate() {
   const route = currentRoute();
   for (const t of tabbar.querySelectorAll('.tab')) {
@@ -33,7 +42,10 @@ function navigate() {
   view.classList.remove('entering');
   void view.offsetWidth; // restart the entry animation
   view.classList.add('entering');
-  rerender();
+  clearTimeout(enteringTimer);
+  enteringTimer = setTimeout(() => view.classList.remove('entering'), 500);
+  routes[route](view, rerender);
+  window.scrollTo(0, 0);
 }
 
 tabbar.addEventListener('click', (e) => {

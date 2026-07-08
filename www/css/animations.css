@@ -31,7 +31,9 @@
 
 .view.entering { animation: view-in 0.22s ease both; }
 
-.stagger > * {
+/* list entry animation plays only when a tab is newly navigated to —
+   rerenders after taps must not make the cards "jiggle" */
+.view.entering .stagger > * {
   animation: fade-up 0.3s ease both;
   animation-delay: calc(var(--i, 0) * 30ms);
 }
