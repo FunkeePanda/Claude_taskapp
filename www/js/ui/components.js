@@ -1,7 +1,6 @@
 // Shared UI pieces: toast, bottom sheet, confirm, task cards, formatting.
 
-import { setCompleted, completeWithDescendants } from '../model.js';
-import { matchesEnergy } from '../focus.js';
+import { setCompleted, completeWithDescendants, setArchived } from '../model.js';
 import { fmtInterval } from '../reminders.js';
 
 export function esc(s) {
@@ -28,12 +27,14 @@ export function toast(msg, { actionLabel, onAction, duration = 3200 } = {}) {
 }
 
 // ---------- Bottom sheet ----------
+// Three ways out, always: tap the scrim, tap ✕, or drag the sheet down.
 export function openSheet(html) {
   const root = document.getElementById('sheet-root');
   root.innerHTML = `
     <div class="sheet-scrim"></div>
     <div class="sheet" role="dialog" aria-modal="true">
       <div class="grabber"></div>
+      <button class="sheet-close" aria-label="Close">✕</button>
       ${html}
     </div>`;
   const scrim = root.querySelector('.sheet-scrim');
@@ -43,6 +44,30 @@ export function openSheet(html) {
     sheet.classList.add('open');
   });
   scrim.addEventListener('click', closeSheet);
+  sheet.querySelector('.sheet-close').addEventListener('click', closeSheet);
+
+  // swipe-down to dismiss (only when the sheet isn't scrolled)
+  let startY = null, dy = 0;
+  sheet.addEventListener('touchstart', (e) => {
+    if (sheet.scrollTop > 0) return;
+    startY = e.touches[0].clientY;
+    dy = 0;
+  }, { passive: true });
+  sheet.addEventListener('touchmove', (e) => {
+    if (startY == null) return;
+    dy = e.touches[0].clientY - startY;
+    if (dy > 0) {
+      sheet.style.transition = 'none';
+      sheet.style.transform = `translateY(${dy}px)`;
+    }
+  }, { passive: true });
+  sheet.addEventListener('touchend', () => {
+    sheet.style.transition = '';
+    if (dy > 110) closeSheet();
+    else sheet.style.transform = '';
+    startY = null;
+  });
+
   return sheet;
 }
 
@@ -53,6 +78,7 @@ export function closeSheet() {
   if (!sheet) return;
   scrim.classList.remove('open');
   sheet.classList.remove('open');
+  sheet.style.transform = 'translateY(105%)'; // wins over any drag offset
   setTimeout(() => { root.innerHTML = ''; }, 340);
 }
 
@@ -101,10 +127,9 @@ export function taskChipsHtml(task, energy, now = Date.now()) {
   const due = fmtDue(task, now);
   if (due) chips.push(`<span class="chip due ${due.cls}">${esc(due.text)}</span>`);
   if (task.priority === 2) chips.push('<span class="chip prio-high">high</span>');
-  if (task.effort) chips.push(`<span class="chip effort">${task.effort === 'quick' ? '⚡ quick win' : '🧠 deep focus'}</span>`);
-  if (task.reminder) chips.push(`<span class="chip nag">🔔 every ${esc(fmtInterval(task.reminder.intervalMin))}</span>`);
+  if (task.effort) chips.push(`<span class="chip effort">${task.effort === 'quick' ? 'quick win' : 'deep focus'}</span>`);
+  if (task.reminder) chips.push(`<span class="chip nag">every ${esc(fmtInterval(task.reminder.intervalMin))}</span>`);
   for (const t of task.tags) chips.push(`<span class="chip tag">#${esc(t)}</span>`);
-  if (matchesEnergy(task, energy)) chips.push('<span class="chip energy-match">good for now</span>');
   return chips.join('');
 }
 
@@ -117,6 +142,7 @@ export function taskCard(task, {
   energy = null, onComplete, onOpen, index = 0, now = Date.now(),
   parentLabel = null, progress = null, hasChildren = false,
   collapsed = false, onToggleCollapse = null, depth = 0,
+  onAddSubtask = null, onArchived = null,
 } = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'collapse-wrap';
@@ -158,17 +184,23 @@ export function taskCard(task, {
 
   card.addEventListener('click', () => onOpen?.(task));
 
-  // swipe right to complete
+  // swipe right → add a subtask; swipe left on a completed task → move
+  // it to the Done section
   let startX = null, dx = 0;
   card.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; dx = 0; }, { passive: true });
   card.addEventListener('touchmove', (e) => {
     if (startX == null) return;
     dx = e.touches[0].clientX - startX;
-    if (dx > 0) card.style.transform = `translateX(${Math.min(dx, 120)}px)`;
+    card.style.transform = `translateX(${Math.max(-120, Math.min(dx, 120))}px)`;
   }, { passive: true });
   card.addEventListener('touchend', () => {
     card.style.transform = '';
-    if (dx > 90 && !task.completedAt) completeWithAnimation(task, wrap, check, onComplete);
+    if (dx > 90) {
+      onAddSubtask?.(task);
+    } else if (dx < -90 && task.completedAt && !task.archived) {
+      setArchived(task.id, true);
+      onArchived?.(task);
+    }
     startX = null;
   });
 
@@ -181,7 +213,7 @@ const BUBBLE_COLORS = ['#a63446', '#c4576a', '#7c2434'];
 
 function spawnBubbles(check, dir) {
   if (REDUCED_MOTION) return;
-  const n = 7;
+  const n = 12; // same count in and out so the two directions mirror
   for (let i = 0; i < n; i++) {
     const b = document.createElement('span');
     b.className = 'bubble ' + dir;
@@ -208,6 +240,7 @@ function completeWithAnimation(task, wrap, check, onComplete) {
 
   if (REDUCED_MOTION) {
     check.classList.toggle('filled', completing);
+    card.classList.toggle('done', completing);
     const flipped = completing ? completeWithDescendants(task.id) : [task.id];
     if (!completing) setCompleted(task.id, false);
     delete check.dataset.busy;
@@ -216,24 +249,24 @@ function completeWithAnimation(task, wrap, check, onComplete) {
   }
 
   if (completing) {
+    // the card stays where it is and just greys out — moving it to Done
+    // is the user's call (swipe left)
     spawnBubbles(check, 'in');
     setTimeout(() => check.classList.add('filling'), 160);
     setTimeout(() => {
       check.classList.remove('filling');
       check.classList.add('filled', 'checkpop');
+      card.classList.add('done');
     }, 400);
     setTimeout(() => {
       check.classList.remove('checkpop');
-      card.classList.add('completing');
-    }, 620);
-    setTimeout(() => wrap.classList.add('collapsed'), 900);
-    setTimeout(() => {
       delete check.dataset.busy;
       const flipped = completeWithDescendants(task.id);
       onComplete?.(task, true, flipped);
-    }, 1140);
+    }, 680);
   } else {
     check.classList.add('checkout');
+    card.classList.remove('done');
     setTimeout(() => {
       check.classList.remove('checkpop', 'checkout', 'filled');
       check.classList.add('unfilling');

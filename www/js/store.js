@@ -44,6 +44,9 @@ export function load() {
   for (const t of doc.tasks) {
     if (t.parentId === undefined) t.parentId = null;
     if (t.collapsed === undefined) t.collapsed = false;
+    // archived: user swiped a completed task into the Done section.
+    // Tasks from older builds that were completed are treated as archived.
+    if (t.archived === undefined) t.archived = !!t.completedAt;
   }
   return doc;
 }

@@ -24,6 +24,7 @@ export function createTask(fields) {
     reminder: fields.reminder ?? null, // { intervalMin, startAt|null } | null
     parentId: fields.parentId ?? null, // nesting: id of the parent task
     collapsed: false,                  // UI: children hidden in the Tasks tree
+    archived: false,                   // swiped into the Done section
     createdAt: Date.now(),
     completedAt: null,
   };
@@ -41,7 +42,10 @@ export function updateTask(id, fields) {
 }
 
 export function setCompleted(id, completed) {
-  return updateTask(id, { completedAt: completed ? Date.now() : null });
+  // unchecking a task that was moved to Done brings it back out
+  return updateTask(id, completed
+    ? { completedAt: Date.now() }
+    : { completedAt: null, archived: false });
 }
 
 // Deleting a task takes its whole subtree with it.
@@ -77,6 +81,15 @@ export function descendantsOf(id) {
 export function progressOf(id) {
   const all = descendantsOf(id);
   return { done: all.filter(t => t.completedAt).length, total: all.length };
+}
+
+// Move a task (and its subtree) in or out of the Done section.
+// Un-archiving is used when a task in Done gets unchecked.
+export function setArchived(id, archived) {
+  for (const t of [getTask(id), ...descendantsOf(id)]) {
+    if (t) t.archived = archived;
+  }
+  save();
 }
 
 // Complete a task and all its open descendants; returns the ids that

@@ -162,7 +162,7 @@ export async function reconcile(now = Date.now()) {
           id: o.nid,
           channelId: 'reminders',
           title: task.title,
-          body: `Nagging every ${fmtInterval(task.reminder.intervalMin)} — tap ✓ Done to stop`,
+          body: `Repeats every ${fmtInterval(task.reminder.intervalMin)} — tap ✓ Done to stop`,
           schedule: { at: new Date(o.ts), allowWhileIdle: true },
           actionTypeId: 'nag',
           extra: { taskId: task.id },

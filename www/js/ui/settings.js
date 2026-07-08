@@ -38,7 +38,7 @@ export async function renderSettings(view, rerender) {
         </div>
       </div>
       <div class="row">
-        <button class="btn secondary block" id="test-nag">🔔 Test notification in 2 minutes</button>
+        <button class="btn secondary block" id="test-nag">Test notification in 2 minutes</button>
       </div>
     </div>
 
@@ -140,7 +140,7 @@ export async function renderSettings(view, rerender) {
       notifications: [{
         id: 999001,
         channelId: 'reminders',
-        title: '🎉 Notifications work!',
+        title: 'Notifications work!',
         body: 'This fired with the app closed. Nag reminders are a go.',
         schedule: { at: new Date(Date.now() + 2 * 60 * 1000), allowWhileIdle: true },
         smallIcon: 'ic_stat_notify',

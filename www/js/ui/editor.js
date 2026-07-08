@@ -8,13 +8,8 @@ import { notificationsSupported } from '../native.js';
 import { openSheet, closeSheet, confirmSheet, toast, esc } from './components.js';
 import { fmtInterval } from '../reminders.js';
 
-const NAG_PRESETS = [
-  { label: 'Off', value: null },
-  { label: '15m', value: 15 },
-  { label: '30m', value: 30 },
-  { label: '1h', value: 60 },
-  { label: '2h', value: 120 },
-];
+const WHEEL_ITEM_H = 36;
+const DEFAULT_INTERVAL = 30; // what the wheel shows when first switched on
 
 export function openAddSheet(onSaved, { parentId = null } = {}) {
   // cleared: chip types the user explicitly dismissed; won't be re-applied
@@ -45,7 +40,7 @@ export function openAddSheet(onSaved, { parentId = null } = {}) {
   function refresh() {
     parsed = parse(input.value, new Date());
     for (const type of cleared) clearField(parsed, type);
-    syncManualFields(sheet, parsed);
+    syncManualFields(sheet, parsed, cleared);
     chipsEl.innerHTML = parseChipsHtml(parsed);
   }
 
@@ -57,7 +52,7 @@ export function openAddSheet(onSaved, { parentId = null } = {}) {
     refresh();
   });
 
-  bindManualFields(sheet, () => parsed, cleared);
+  bindManualFields(sheet, () => parsed, cleared, {});
 
   sheet.querySelector('#save-task').addEventListener('click', async () => {
     const fields = collectFields(sheet, parsed);
@@ -90,7 +85,7 @@ export function openEditSheet(taskId, onSaved) {
       <input class="input" id="edit-title" value="${esc(task.title)}" />
     </div>
     ${manualFieldsHtml(task)}
-    <button class="btn secondary block" id="add-subtask">＋ Add subtask${
+    <button class="btn secondary block" id="add-subtask">+ Add subtask${
       childrenOf(taskId).length ? ` <span style="color:var(--text-dim);font-weight:500">(${childrenOf(taskId).length} so far)</span>` : ''
     }</button>
     <div style="display:flex; gap:10px; margin-top:12px">
@@ -104,7 +99,7 @@ export function openEditSheet(taskId, onSaved) {
     setTimeout(() => openAddSheet(onSaved, { parentId: taskId }), 360);
   });
 
-  bindManualFields(sheet, () => null, new Set());
+  bindManualFields(sheet, () => null, new Set(), task);
 
   sheet.querySelector('#save-task').addEventListener('click', async () => {
     const fields = collectFields(sheet, null);
@@ -134,17 +129,20 @@ export function openEditSheet(taskId, onSaved) {
 // ---------- shared pieces ----------
 
 function manualFieldsHtml(task) {
-  const dueVal = task.due && !task.allDay ? toLocalInputValue(task.due) : '';
-  const dateVal = task.due && task.allDay ? toLocalInputValue(task.due).slice(0, 10) : '';
+  const dateVal = task.due ? toLocalInputValue(task.due).slice(0, 10) : '';
+  const timeVal = task.due && !task.allDay ? toLocalInputValue(task.due).slice(11) : '';
+  const hasReminder = !!task.reminder;
   return `
     <div class="field">
       <label>Notes</label>
       <textarea class="input" id="f-notes" rows="2">${esc(task.notes || '')}</textarea>
     </div>
     <div class="field">
-      <label>Due date ${task.allDay === false ? '& time' : ''}</label>
-      <input type="date" class="input" id="f-date" value="${dateVal}" style="margin-bottom:8px" />
-      <input type="datetime-local" class="input" id="f-datetime" value="${dueVal}" placeholder="or exact time" />
+      <label>Due — date and/or time</label>
+      <div style="display:flex; gap:8px">
+        <input type="date" class="input" id="f-date" value="${dateVal}" style="flex:3" />
+        <input type="time" class="input" id="f-time" value="${timeVal}" style="flex:2" />
+      </div>
     </div>
     <div class="field">
       <label>Priority</label>
@@ -158,27 +156,21 @@ function manualFieldsHtml(task) {
       <label>Effort</label>
       <div class="segment" id="f-effort">
         <button data-v="" ${!task.effort ? 'class="active"' : ''}>—</button>
-        <button data-v="quick" ${task.effort === 'quick' ? 'class="active"' : ''}>⚡ Quick win</button>
-        <button data-v="deep" ${task.effort === 'deep' ? 'class="active"' : ''}>🧠 Deep focus</button>
+        <button data-v="quick" ${task.effort === 'quick' ? 'class="active"' : ''}>Quick win</button>
+        <button data-v="deep" ${task.effort === 'deep' ? 'class="active"' : ''}>Deep focus</button>
       </div>
     </div>
     <div class="field">
-      <label>Nag me every…</label>
-      <div class="segment" id="f-nag">
-        ${NAG_PRESETS.map(p => `<button data-v="${p.value ?? ''}" ${
-          (task.reminder?.intervalMin ?? null) === p.value ? 'class="active"' : ''
-        }>${p.label}</button>`).join('')}
-        <button data-v="custom" ${isCustomInterval(task.reminder) ? 'class="active"' : ''}>${
-          isCustomInterval(task.reminder) ? esc(shortInterval(task.reminder.intervalMin)) : '⋯'
-        }</button>
+      <div style="display:flex; align-items:center; justify-content:space-between">
+        <label style="margin-bottom:0">Notify me every…</label>
+        <button class="switch ${hasReminder ? 'on' : ''}" id="f-notify" role="switch"
+          aria-checked="${hasReminder}" aria-label="Interval notifications"></button>
       </div>
-      <div id="f-nag-custom" style="display:${isCustomInterval(task.reminder) ? 'flex' : 'none'}; gap:8px; margin-top:8px; align-items:center">
-        <input type="number" class="input" id="f-nag-n" min="1" inputmode="numeric"
-          value="${isCustomInterval(task.reminder) ? customParts(task.reminder.intervalMin).n : 45}" style="flex:1" />
-        <div class="segment" id="f-nag-unit" style="flex:2">
-          <button data-v="m" ${!isCustomInterval(task.reminder) || customParts(task.reminder.intervalMin).unit === 'm' ? 'class="active"' : ''}>minutes</button>
-          <button data-v="h" ${isCustomInterval(task.reminder) && customParts(task.reminder.intervalMin).unit === 'h' ? 'class="active"' : ''}>hours</button>
-        </div>
+      <div class="wheel-row" id="f-wheel-row" style="display:${hasReminder ? 'flex' : 'none'}">
+        <div class="wheel" id="f-wheel-h"></div>
+        <span class="wheel-unit">hr</span>
+        <div class="wheel" id="f-wheel-m"></div>
+        <span class="wheel-unit">min</span>
       </div>
     </div>
     <div class="field">
@@ -187,8 +179,66 @@ function manualFieldsHtml(task) {
     </div>`;
 }
 
-function bindManualFields(sheet, getParsed, cleared) {
-  for (const id of ['f-priority', 'f-effort', 'f-nag', 'f-nag-unit']) {
+// ---------- interval wheel ----------
+
+function buildWheel(el, count) {
+  el.innerHTML = `<div class="pad"></div>${
+    Array.from({ length: count }, (_, i) => `<div class="item">${i}</div>`).join('')
+  }<div class="pad"></div>`;
+}
+
+function wheelValue(el) {
+  return Math.max(0, Math.round(el.scrollTop / WHEEL_ITEM_H));
+}
+
+function setWheel(el, value) {
+  // programmatic moves fire 'scroll' too — flag them so the listener can
+  // tell them apart from the user's finger
+  el.dataset.prog = '1';
+  el.scrollTop = value * WHEEL_ITEM_H;
+  setTimeout(() => delete el.dataset.prog, 80);
+}
+
+function setupIntervalControl(sheet, cleared, initialMin) {
+  const toggle = sheet.querySelector('#f-notify');
+  const row = sheet.querySelector('#f-wheel-row');
+  const wheelH = sheet.querySelector('#f-wheel-h');
+  const wheelM = sheet.querySelector('#f-wheel-m');
+  buildWheel(wheelH, 24);  // 0–23 hours
+  buildWheel(wheelM, 60);  // 0–59 minutes
+
+  const position = (min) => {
+    setWheel(wheelH, Math.floor(min / 60));
+    setWheel(wheelM, min % 60);
+  };
+  if (initialMin) requestAnimationFrame(() => position(initialMin));
+
+  toggle.addEventListener('click', () => {
+    const on = toggle.classList.toggle('on');
+    toggle.setAttribute('aria-checked', on);
+    row.style.display = on ? 'flex' : 'none';
+    cleared.add('nag');
+    if (on && wheelValue(wheelH) === 0 && wheelValue(wheelM) === 0) {
+      requestAnimationFrame(() => position(DEFAULT_INTERVAL));
+    }
+  });
+  for (const w of [wheelH, wheelM]) {
+    w.addEventListener('scroll', () => {
+      if (!w.dataset.prog) cleared.add('nag');
+    }, { passive: true });
+  }
+}
+
+function readIntervalControl(sheet) {
+  const toggle = sheet.querySelector('#f-notify');
+  if (!toggle?.classList.contains('on')) return null;
+  const min = wheelValue(sheet.querySelector('#f-wheel-h')) * 60
+    + wheelValue(sheet.querySelector('#f-wheel-m'));
+  return { intervalMin: Math.max(1, min), startAt: null };
+}
+
+function bindManualFields(sheet, getParsed, cleared, task = {}) {
+  for (const id of ['f-priority', 'f-effort']) {
     const seg = sheet.querySelector('#' + id);
     seg?.addEventListener('click', (e) => {
       const btn = e.target.closest('button');
@@ -196,76 +246,80 @@ function bindManualFields(sheet, getParsed, cleared) {
       seg.querySelectorAll('button').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       // a manual choice overrides whatever the NL parse said
-      if (id === 'f-priority') cleared.add('priority');
-      if (id === 'f-effort') cleared.add('effort');
-      if (id === 'f-nag' || id === 'f-nag-unit') cleared.add('nag');
-      if (id === 'f-nag') {
-        sheet.querySelector('#f-nag-custom').style.display =
-          btn.dataset.v === 'custom' ? 'flex' : 'none';
-      }
+      cleared.add(id === 'f-priority' ? 'priority' : 'effort');
     });
   }
-  sheet.querySelector('#f-nag-n')?.addEventListener('input', () => cleared.add('nag'));
-  const date = sheet.querySelector('#f-date');
-  const dt = sheet.querySelector('#f-datetime');
-  date?.addEventListener('change', () => { cleared.add('due'); cleared.add('time'); if (date.value) dt.value = ''; });
-  dt?.addEventListener('change', () => { cleared.add('due'); cleared.add('time'); if (dt.value) date.value = ''; });
+  setupIntervalControl(sheet, cleared, task.reminder?.intervalMin ?? 0);
+  sheet.querySelector('#f-date')?.addEventListener('change', () => { cleared.add('due'); cleared.add('time'); });
+  sheet.querySelector('#f-time')?.addEventListener('change', () => { cleared.add('due'); cleared.add('time'); });
 }
 
-// When the NL parse changes, reflect it into the manual controls (unless
-// the user already touched them — their edits win via `cleared`).
-function syncManualFields(sheet, parsed) {
+// When the NL parse changes, reflect it into the manual controls — but a
+// control the user already touched (its type is in `cleared`) is theirs
+// now, and the parse must keep its hands off it.
+function syncManualFields(sheet, parsed, cleared) {
   const setSeg = (id, val) => {
     const seg = sheet.querySelector('#' + id);
     if (!seg) return;
     seg.querySelectorAll('button').forEach(b =>
       b.classList.toggle('active', b.dataset.v === String(val ?? '')));
   };
-  setSeg('f-priority', parsed.priority);
-  setSeg('f-effort', parsed.effort ?? '');
+  if (!cleared.has('priority')) setSeg('f-priority', parsed.priority);
+  if (!cleared.has('effort')) setSeg('f-effort', parsed.effort ?? '');
 
-  const interval = parsed.reminder?.intervalMin ?? null;
-  const customBtn = sheet.querySelector('#f-nag button[data-v="custom"]');
-  const customRow = sheet.querySelector('#f-nag-custom');
-  if (isCustomInterval(parsed.reminder)) {
-    setSeg('f-nag', 'custom');
-    const { n, unit } = customParts(interval);
-    sheet.querySelector('#f-nag-n').value = n;
-    setSeg('f-nag-unit', unit);
-    if (customBtn) customBtn.textContent = shortInterval(interval);
-    if (customRow) customRow.style.display = 'flex';
-  } else {
-    setSeg('f-nag', interval ?? '');
-    if (customBtn) customBtn.textContent = '⋯';
-    if (customRow) customRow.style.display = 'none';
+  // reminder → switch + wheels
+  if (!cleared.has('nag')) {
+    const toggle = sheet.querySelector('#f-notify');
+    const row = sheet.querySelector('#f-wheel-row');
+    const interval = parsed.reminder?.intervalMin ?? null;
+    const on = interval != null;
+    toggle.classList.toggle('on', on);
+    toggle.setAttribute('aria-checked', on);
+    row.style.display = on ? 'flex' : 'none';
+    if (on) {
+      setWheel(sheet.querySelector('#f-wheel-h'), Math.floor(interval / 60));
+      setWheel(sheet.querySelector('#f-wheel-m'), interval % 60);
+    }
   }
-  const date = sheet.querySelector('#f-date');
-  const dt = sheet.querySelector('#f-datetime');
-  if (date && dt) {
-    if (parsed.due && parsed.allDay) { date.value = toLocalInputValue(parsed.due).slice(0, 10); dt.value = ''; }
-    else if (parsed.due) { dt.value = toLocalInputValue(parsed.due); date.value = ''; }
-    else { date.value = ''; dt.value = ''; }
+
+  // due → single date + optional time row
+  if (!cleared.has('due') && !cleared.has('time')) {
+    const date = sheet.querySelector('#f-date');
+    const time = sheet.querySelector('#f-time');
+    if (date && time) {
+      if (parsed.due) {
+        const v = toLocalInputValue(parsed.due);
+        date.value = v.slice(0, 10);
+        time.value = parsed.allDay ? '' : v.slice(11);
+      } else {
+        date.value = '';
+        time.value = '';
+      }
+    }
   }
 }
 
 function collectFields(sheet, parsed) {
   const seg = (id) => sheet.querySelector(`#${id} button.active`)?.dataset.v ?? '';
   const dateV = sheet.querySelector('#f-date')?.value;
-  const dtV = sheet.querySelector('#f-datetime')?.value;
+  const timeV = sheet.querySelector('#f-time')?.value;
 
+  // one Due row: date only → all-day; date+time → exact; time only → today
   let due = null, allDay = true;
-  if (dtV) { due = new Date(dtV).getTime(); allDay = false; }
-  else if (dateV) {
-    const d = new Date(dateV + 'T23:59:00');
-    due = d.getTime(); allDay = true;
+  if (dateV && timeV) {
+    due = new Date(`${dateV}T${timeV}`).getTime();
+    allDay = false;
+  } else if (dateV) {
+    due = new Date(dateV + 'T23:59:00').getTime();
+    allDay = true;
+  } else if (timeV) {
+    const d = new Date();
+    const [h, m] = timeV.split(':').map(Number);
+    d.setHours(h, m, 0, 0);
+    due = d.getTime();
+    allDay = false;
   }
 
-  let nagV = seg('f-nag');
-  if (nagV === 'custom') {
-    const n = Math.max(1, parseInt(sheet.querySelector('#f-nag-n')?.value || '0', 10) || 0);
-    const unit = seg('f-nag-unit') || 'm';
-    nagV = n ? String(n * (unit === 'h' ? 60 : 1)) : '';
-  }
   const tags = (sheet.querySelector('#f-tags')?.value || '')
     .split(',').map(s => s.trim().toLowerCase().replace(/^#/, '')).filter(Boolean);
   const parsedTags = parsed?.tags || [];
@@ -276,7 +330,7 @@ function collectFields(sheet, parsed) {
     due, allDay,
     priority: parseInt(seg('f-priority') || '1', 10),
     effort: seg('f-effort') || null,
-    reminder: nagV ? { intervalMin: parseInt(nagV, 10), startAt: null } : null,
+    reminder: readIntervalControl(sheet),
     tags: [...new Set([...parsedTags, ...tags])],
   };
 }
@@ -290,11 +344,11 @@ function parseChipsHtml(p) {
     const label = p.allDay
       ? d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
       : d.toLocaleDateString(undefined, { weekday: 'short' }) + ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-    chips.push(chip('due', 'due today', '📅 ' + esc(label)));
+    chips.push(chip('due', 'due today', esc(label)));
   }
   if (p.priority !== 1) chips.push(chip('priority', p.priority === 2 ? 'prio-high' : '', p.priority === 2 ? 'high priority' : 'low priority'));
-  if (p.effort) chips.push(chip('effort', 'effort', p.effort === 'quick' ? '⚡ quick win' : '🧠 deep focus'));
-  if (p.reminder) chips.push(chip('nag', 'nag', '🔔 every ' + esc(fmtInterval(p.reminder.intervalMin))));
+  if (p.effort) chips.push(chip('effort', 'effort', p.effort === 'quick' ? 'quick win' : 'deep focus'));
+  if (p.reminder) chips.push(chip('nag', 'nag', 'every ' + esc(fmtInterval(p.reminder.intervalMin))));
   for (const t of p.tags) chips.push(`<span class="chip tag">#${esc(t)}</span>`);
   return chips.join('');
 }
@@ -304,23 +358,6 @@ function clearField(parsed, type) {
   if (type === 'priority') parsed.priority = 1;
   if (type === 'effort') parsed.effort = null;
   if (type === 'nag') parsed.reminder = null;
-}
-
-const PRESET_VALUES = NAG_PRESETS.map(p => p.value);
-
-function isCustomInterval(reminder) {
-  return !!reminder && !PRESET_VALUES.includes(reminder.intervalMin);
-}
-
-// 90 → {n:90, unit:'m'}; 180 → {n:3, unit:'h'}
-function customParts(intervalMin) {
-  return intervalMin % 60 === 0
-    ? { n: intervalMin / 60, unit: 'h' }
-    : { n: intervalMin, unit: 'm' };
-}
-
-function shortInterval(intervalMin) {
-  return intervalMin % 60 === 0 ? `${intervalMin / 60}h` : `${intervalMin}m`;
 }
 
 function toLocalInputValue(ms) {

@@ -1,10 +1,10 @@
 // Calendar view: month grid with dots on days that have open tasks;
 // tapping a day lists its tasks below.
 
-import { allTasks, currentEnergy, setCompleted, getTask } from '../model.js';
+import { allTasks, setCompleted, getTask } from '../model.js';
 import { monthGrid, tasksByDay, sameDay } from '../dates.js';
 import { taskCard, toast } from './components.js';
-import { openEditSheet } from './editor.js';
+import { openEditSheet, openAddSheet } from './editor.js';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
@@ -81,7 +81,7 @@ export function renderCalendar(view, rerender) {
   }
 
   const dayTasks = tasks
-    .filter(t => t.due != null && sameDay(t.due, selected))
+    .filter(t => t.due != null && !t.archived && sameDay(t.due, selected))
     .sort((a, b) => (a.completedAt ? 1 : 0) - (b.completedAt ? 1 : 0) || a.due - b.due);
 
   label.textContent = sel.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
@@ -91,13 +91,12 @@ export function renderCalendar(view, rerender) {
     return;
   }
 
-  const energy = currentEnergy();
   dayTasks.forEach((t, i) => holder.appendChild(taskCard(t, {
-    energy, index: i,
+    index: i,
     parentLabel: t.parentId ? getTask(t.parentId)?.title : null,
     onComplete: (task, done, flipped) => {
       if (done) {
-        toast('Done ✓', {
+        toast('Done', {
           actionLabel: 'Undo',
           onAction: () => { flipped.forEach(id => setCompleted(id, false)); rerender(); },
         });
@@ -105,5 +104,7 @@ export function renderCalendar(view, rerender) {
       rerender();
     },
     onOpen: (task) => openEditSheet(task.id, rerender),
+    onAddSubtask: (task) => openAddSheet(rerender, { parentId: task.id }),
+    onArchived: () => { toast('Moved to Done'); rerender(); },
   })));
 }
