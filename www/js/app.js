@@ -1,8 +1,9 @@
 // Focus — bootstrap: router, FAB, notification lifecycle.
 
-import { App } from './native.js';
+import { App, isNative } from './native.js';
 import { onChange } from './store.js';
 import { initNotifications, reconcile } from './reminders.js';
+import { webPushSupported, registerServiceWorker } from './webpush.js';
 import { renderToday } from './ui/today.js';
 import { renderTasks } from './ui/tasks.js';
 import { renderCalendar } from './ui/calendar.js';
@@ -78,6 +79,11 @@ initNotifications((actionId, taskId) => {
 
 // Reconcile on every resume: refills the rolling reminder window.
 App.addListener('resume', () => reconcile());
+
+// iOS has no local background alarms — Web Push needs a service worker
+// registered up front so a subscription can be created later.
+if (!isNative && webPushSupported) registerServiceWorker();
+
 reconcile();
 
 navigate();

@@ -1,0 +1,20 @@
+name = "focus-push"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+
+[triggers]
+# every minute — matches the client's reminder granularity; well inside
+# the free tier's Cron Trigger + request allowances
+crons = ["*/1 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "focus-push-db"
+# Filled in after `wrangler d1 create focus-push-db` (Phase B — needs a
+# real Cloudflare account). Deploys will fail with a clear error until
+# this is set.
+database_id = "REPLACE_AFTER_D1_CREATE"
+
+# VAPID_PRIVATE_KEY (JWK JSON string) is set via:
+#   wrangler secret put VAPID_PRIVATE_KEY
+# — not in this file, never committed.

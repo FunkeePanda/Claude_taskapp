@@ -145,6 +145,7 @@ export function sessionNotifications(task, now) {
 
 import { LocalNotifications, notificationsSupported } from './native.js';
 import { allTasks, getTask, setCompleted, updateTask, settings as getSettings } from './model.js';
+import { webPushSupported, webPushPermission, ensureWebPushSubscription, syncWebPush } from './webpush.js';
 
 export function fmtInterval(intervalMin) {
   if (intervalMin % 60 === 0) {
@@ -155,12 +156,33 @@ export function fmtInterval(intervalMin) {
 }
 
 export async function ensurePermission() {
-  if (!notificationsSupported) return false;
-  let { display } = await LocalNotifications.checkPermissions();
-  if (display === 'prompt' || display === 'prompt-with-rationale') {
-    ({ display } = await LocalNotifications.requestPermissions());
+  if (notificationsSupported) {
+    let { display } = await LocalNotifications.checkPermissions();
+    if (display === 'prompt' || display === 'prompt-with-rationale') {
+      ({ display } = await LocalNotifications.requestPermissions());
+    }
+    return display === 'granted';
   }
-  return display === 'granted';
+  if (webPushSupported) return ensureWebPushSubscription();
+  return false;
+}
+
+// Unified permission read across platforms, for Settings to render one
+// status pill regardless of which delivery path is active.
+export async function permissionStatus() {
+  if (notificationsSupported) {
+    const { display } = await LocalNotifications.checkPermissions();
+    if (display === 'granted') return 'granted';
+    if (display === 'denied') return 'denied';
+    return 'prompt';
+  }
+  if (webPushSupported) {
+    const perm = await webPushPermission();
+    if (perm === 'granted') return 'granted';
+    if (perm === 'denied') return 'denied';
+    return 'prompt';
+  }
+  return 'unsupported';
 }
 
 let initialized = false;
@@ -216,7 +238,8 @@ export async function stopSession(id) {
 let reconciling = false;
 
 // Cancel-everything-then-reschedule: simplest idempotent sync between
-// the task list and Android's pending alarms.
+// the task list and this platform's delivery backend (Android's local
+// alarms, or the Worker's D1 table for Web Push on iOS).
 export async function reconcile(now = Date.now()) {
   // sessions that ran out (task timer elapsed) end themselves, so
   // muting/play-state don't linger — do this even in the web preview
@@ -224,8 +247,17 @@ export async function reconcile(now = Date.now()) {
     if (t.session && !sessionActive(t, now)) updateTask(t.id, { session: null });
   }
 
-  if (!notificationsSupported || reconciling) return;
+  if (reconciling) return;
   reconciling = true;
+  try {
+    if (notificationsSupported) await reconcileNative(now);
+    else if (webPushSupported) await reconcileWebPush(now);
+  } finally {
+    reconciling = false;
+  }
+}
+
+async function reconcileNative(now) {
   try {
     const { display } = await LocalNotifications.checkPermissions();
     if (display !== 'granted') return;
@@ -269,7 +301,30 @@ export async function reconcile(now = Date.now()) {
 
     const all = [...nags, ...sessions];
     if (all.length) await LocalNotifications.schedule({ notifications: all });
-  } finally {
-    reconciling = false;
-  }
+  } catch { /* transient plugin error — next reconcile() retries */ }
+}
+
+// Same planning output as reconcileNative, shaped for the Worker's
+// /sync route instead of Android's schedule() call.
+async function reconcileWebPush(now) {
+  const perm = await webPushPermission();
+  if (perm !== 'granted') return;
+
+  const byId = new Map(allTasks().map(t => [t.id, t]));
+  const nags = planAll(allTasks(), now, getSettings()).map(o => {
+    const task = byId.get(o.taskId);
+    return {
+      nid: o.nid,
+      ts: o.ts,
+      title: task.title,
+      body: `Repeats every ${fmtInterval(task.reminder.intervalMin)} — tap to open Focus`,
+    };
+  });
+
+  const sessions = allTasks()
+    .filter(t => sessionActive(t, now))
+    .flatMap(t => sessionNotifications(t, now))
+    .map(o => ({ nid: o.nid, ts: o.ts, title: o.title, body: o.body }));
+
+  await syncWebPush([...nags, ...sessions]);
 }

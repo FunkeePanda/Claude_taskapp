@@ -3,7 +3,8 @@
 import { isNative, notificationsSupported, LocalNotifications, App, Filesystem, Share } from '../native.js';
 import { settings, updateSettings } from '../model.js';
 import { exportJSON, importJSON } from '../store.js';
-import { ensurePermission, reconcile } from '../reminders.js';
+import { ensurePermission, permissionStatus, reconcile } from '../reminders.js';
+import { webPushSupported, sendTestPush } from '../webpush.js';
 import { toast, confirmSheet, esc } from './components.js';
 
 // iPadOS reports a desktop Mac UA but exposes touch points — catch both.
@@ -19,8 +20,8 @@ export async function renderSettings(view, rerender) {
     <div class="section-label">Notifications</div>
     <div class="card">
       <div class="row">
-        <div><div class="label">Platform</div><div class="sub">${isNative ? 'Android app' : isIOS ? 'iPhone/iPad (home screen app) — background reminders aren’t supported by Safari' : 'Web preview — reminders need the installed app'}</div></div>
-        <span class="status-pill ${isNative ? 'ok' : 'bad'}">${isNative ? 'native' : 'web'}</span>
+        <div><div class="label">Platform</div><div class="sub">${isNative ? 'Android app' : webPushSupported ? 'Installed home-screen app — Web Push enabled' : isIOS ? 'iPhone/iPad (home screen app) — background reminders aren’t supported by Safari yet' : 'Web preview — reminders need the installed app'}</div></div>
+        <span class="status-pill ${isNative || webPushSupported ? 'ok' : 'bad'}">${isNative ? 'native' : webPushSupported ? 'push' : 'web'}</span>
       </div>
       <div class="row">
         <div><div class="label">Notification permission</div><div class="sub" id="perm-sub">checking…</div></div>
@@ -87,12 +88,12 @@ export async function renderSettings(view, rerender) {
   const permPill = view.querySelector('#perm-pill');
   const permSub = view.querySelector('#perm-sub');
   try {
-    const { display } = await LocalNotifications.checkPermissions();
-    permPill.textContent = display;
-    permPill.className = 'status-pill ' + (display === 'granted' ? 'ok' : 'bad');
-    if (display === 'granted') permSub.textContent = 'Reminders can fire';
-    else if (!notificationsSupported && isIOS) permSub.textContent = 'Not supported in Safari — everything else in the app still works';
-    else if (!notificationsSupported) permSub.textContent = 'Install the Android app for reminders';
+    const status = await permissionStatus();
+    permPill.textContent = status;
+    permPill.className = 'status-pill ' + (status === 'granted' ? 'ok' : 'bad');
+    if (status === 'granted') permSub.textContent = 'Reminders can fire';
+    else if (status === 'unsupported' && isIOS) permSub.textContent = 'Not supported in Safari yet — everything else in the app still works';
+    else if (status === 'unsupported') permSub.textContent = 'Install the Android app for reminders';
     else {
       permSub.innerHTML = '<button class="btn small" id="req-perm" style="margin-top:6px">Enable notifications</button>';
       view.querySelector('#req-perm').addEventListener('click', async () => {
@@ -139,20 +140,29 @@ export async function renderSettings(view, rerender) {
 
   // test nag
   view.querySelector('#test-nag').addEventListener('click', async () => {
-    if (!notificationsSupported && isIOS) { toast('Not supported in Safari on iPhone/iPad'); return; }
-    if (!notificationsSupported) { toast('Notifications need the installed Android app'); return; }
-    if (!(await ensurePermission())) { toast('Permission denied — enable notifications in system settings'); return; }
-    await LocalNotifications.schedule({
-      notifications: [{
-        id: 999001,
-        channelId: 'reminders',
-        title: 'Notifications work!',
-        body: 'This fired with the app closed. Nag reminders are a go.',
-        schedule: { at: new Date(Date.now() + 2 * 60 * 1000), allowWhileIdle: true },
-        smallIcon: 'ic_stat_notify',
-      }],
-    });
-    toast('Scheduled! Swipe the app away and wait 2 min');
+    if (notificationsSupported) {
+      if (!(await ensurePermission())) { toast('Permission denied — enable notifications in system settings'); return; }
+      await LocalNotifications.schedule({
+        notifications: [{
+          id: 999001,
+          channelId: 'reminders',
+          title: 'Notifications work!',
+          body: 'This fired with the app closed. Nag reminders are a go.',
+          schedule: { at: new Date(Date.now() + 2 * 60 * 1000), allowWhileIdle: true },
+          smallIcon: 'ic_stat_notify',
+        }],
+      });
+      toast('Scheduled! Swipe the app away and wait 2 min');
+      return;
+    }
+    if (webPushSupported) {
+      if (!(await ensurePermission())) { toast('Permission denied — enable notifications in Settings'); return; }
+      const ok = await sendTestPush();
+      toast(ok ? 'Scheduled! Close the app and wait 2 min' : 'Could not reach the push server');
+      return;
+    }
+    if (isIOS) { toast('Not supported in Safari on iPhone/iPad yet'); return; }
+    toast('Notifications need the installed Android app');
   });
 
   // export / import
