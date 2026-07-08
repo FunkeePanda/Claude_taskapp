@@ -1,4 +1,4 @@
-// Focus scoring + energy matching. Pure — unit-tested in test/focus.test.js.
+// Focus scoring. Pure — unit-tested in test/focus.test.js.
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -32,14 +32,6 @@ export function score(task, now = Date.now()) {
   return s;
 }
 
-// Energy re-ranks; it never hides. 'low' favors quick wins, 'high'
-// favors deep-focus work.
-export function energyAdjust(task, energy) {
-  if (!energy || !task.effort) return 0;
-  if (energy === 'low') return task.effort === 'quick' ? 20 : -15;
-  return task.effort === 'deep' ? 20 : -5;
-}
-
 export function isOverdue(task, now = Date.now()) {
   return task.due != null && task.due < now && !task.completedAt;
 }
@@ -51,10 +43,10 @@ export function isDueToday(task, now = Date.now()) {
 
 // The Today list: every overdue + due-today task is always included
 // (even past the limit), then the best-scored rest fill up to `limit`.
-export function todayList(tasks, now = Date.now(), limit = 5, energy = null) {
+export function todayList(tasks, now = Date.now(), limit = 5) {
   const open = tasks.filter(t => !t.completedAt);
   const ranked = open
-    .map(t => ({ t, s: score(t, now) + energyAdjust(t, energy) }))
+    .map(t => ({ t, s: score(t, now) }))
     .sort((a, b) => b.s - a.s);
 
   const must = ranked.filter(({ t }) => isOverdue(t, now) || isDueToday(t, now));
@@ -66,11 +58,4 @@ export function todayList(tasks, now = Date.now(), limit = 5, energy = null) {
     picked.push(r);
   }
   return picked.map(({ t }) => t);
-}
-
-// Badge helper: does this task match the current energy level?
-export function matchesEnergy(task, energy) {
-  return !!energy && !!task.effort &&
-    ((energy === 'low' && task.effort === 'quick') ||
-     (energy === 'high' && task.effort === 'deep'));
 }

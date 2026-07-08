@@ -130,7 +130,7 @@ export function fmtDue(task, now = Date.now()) {
   return { text: (due.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + time).trim(), cls: '' };
 }
 
-export function taskChipsHtml(task, energy, now = Date.now()) {
+export function taskChipsHtml(task, now = Date.now()) {
   const chips = [];
   if (task.color) {
     chips.push(`<span class="chip cat" style="--c:${esc(task.color)}; background:color-mix(in srgb, ${esc(task.color)} 20%, transparent)"><span class="dot"></span></span>`);
@@ -139,7 +139,6 @@ export function taskChipsHtml(task, energy, now = Date.now()) {
   if (due) chips.push(`<span class="chip due ${due.cls}">${esc(due.text)}</span>`);
   if (sessionActive(task, now)) chips.push('<span class="chip nag">session running</span>');
   if (task.priority === 2) chips.push('<span class="chip prio-high">high</span>');
-  if (task.effort) chips.push(`<span class="chip effort">${task.effort === 'quick' ? 'quick win' : 'deep focus'}</span>`);
   if (task.reminder) chips.push(`<span class="chip nag">every ${esc(fmtInterval(task.reminder.intervalMin))}</span>`);
   for (const t of task.tags) chips.push(`<span class="chip tag">#${esc(t)}</span>`);
   return chips.join('');
@@ -151,7 +150,7 @@ export function taskChipsHtml(task, energy, now = Date.now()) {
 // title), progress ({done,total} chip), hasChildren/collapsed/onToggleCollapse
 // (chevron), depth (tree indent).
 export function taskCard(task, {
-  energy = null, onComplete, onOpen, index = 0, now = Date.now(),
+  onComplete, onOpen, index = 0, now = Date.now(),
   parentLabel = null, progress = null, hasChildren = false,
   collapsed = false, onToggleCollapse = null, depth = 0,
   onAddSubtask = null, onArchived = null, onSession = null,
@@ -171,7 +170,7 @@ export function taskCard(task, {
         <div>
           ${parentLabel ? `<div class="parent-label">${esc(parentLabel)} ›</div>` : ''}
           <div class="title">${esc(task.title)}</div>
-          <div class="task-meta">${progressChip}${taskChipsHtml(task, energy, now)}</div>
+          <div class="task-meta">${progressChip}${taskChipsHtml(task, now)}</div>
         </div>
         <div style="display:flex; align-items:center; gap:2px">
           ${(task.timer || task.breaks) && !task.completedAt ? `
@@ -213,33 +212,44 @@ export function taskCard(task, {
     completeWithAnimation(task, wrap, check, onComplete);
   });
 
-  let lpFired = false;
+  let armed = false;
   card.addEventListener('click', () => {
-    if (lpFired) { lpFired = false; return; } // long-press consumed this tap
+    if (armed) { armed = false; return; } // the hold gesture consumed this tap
     onOpen?.(task);
   });
 
   // swipe right → add a subtask; swipe left on a completed task → move
-  // it to Done; hold half a second → toggle subtasks
-  let startX = null, startY = null, dx = 0, moved = false, lpTimer = null;
+  // it to Done. Hold half a second → haptic tick arms the card; THEN
+  // swiping down while still holding toggles the subtasks. Releasing
+  // without swiping does nothing (reserved for future hold options).
+  let startX = null, startY = null, dx = 0, moved = false, lpTimer = null, holdToggled = false;
   card.addEventListener('touchstart', (e) => {
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
     dx = 0;
     moved = false;
-    lpFired = false;
+    armed = false;
+    holdToggled = false;
     clearTimeout(lpTimer);
     lpTimer = setTimeout(() => {
       if (moved) return;
-      lpFired = true;
+      armed = true;
       navigator.vibrate?.(15);
-      if (hasChildren) onToggleCollapse?.(task);
     }, 500);
   }, { passive: true });
   card.addEventListener('touchmove', (e) => {
     if (startX == null) return;
     dx = e.touches[0].clientX - startX;
     const dy = e.touches[0].clientY - startY;
+    if (armed) {
+      // holding: a downward swipe (still pressed) toggles the subtasks
+      if (!holdToggled && dy > 40 && hasChildren) {
+        holdToggled = true;
+        navigator.vibrate?.(10);
+        onToggleCollapse?.(task);
+      }
+      return; // no horizontal card slide while armed
+    }
     if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
       moved = true;
       clearTimeout(lpTimer);
@@ -249,7 +259,7 @@ export function taskCard(task, {
   card.addEventListener('touchend', () => {
     clearTimeout(lpTimer);
     card.style.transform = '';
-    if (!lpFired) {
+    if (!armed) {
       if (dx > 90) {
         onAddSubtask?.(task);
       } else if (dx < -90 && task.completedAt && !task.archived) {

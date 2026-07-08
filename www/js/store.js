@@ -13,8 +13,6 @@ function defaults() {
       quietStart: '22:00',
       quietEnd: '08:00',
       focusLimit: 5,
-      energy: null,          // 'high' | 'low' | null
-      energySetAt: null,     // ms timestamp; expires after 4h
     },
     meta: { nextId: 1 },
   };

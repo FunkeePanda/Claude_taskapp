@@ -1,5 +1,5 @@
 // Tasks view: the full list as a collapsible tree, grouped, with
-// tag/effort filter chips (filters show flat matches).
+// tag/color filter chips (filters show flat matches).
 //
 // Completed tasks stay greyed in their group until swiped left, which
 // moves them (archived) into the Done section.
@@ -8,7 +8,7 @@ import { allTasks, setCompleted, updateTask, childrenOf, progressOf, getTask } f
 import { taskCard, toast, esc } from './components.js';
 import { openEditSheet, openAddSheet } from './editor.js';
 
-let activeFilter = null; // { kind: 'tag'|'effort'|'color', value }
+let activeFilter = null; // { kind: 'tag'|'color', value }
 let pendingReveal = null; // task id whose subtree should slide open after render
 
 export function renderTasks(view, rerender) {
@@ -17,11 +17,10 @@ export function renderTasks(view, rerender) {
 
   const tagSet = [...new Set(tasks.flatMap(t => t.tags))].sort();
   const colorSet = [...new Set(tasks.map(t => t.color).filter(Boolean))];
-  const hasEfforts = tasks.some(t => t.effort);
 
   const filterChip = (kind, value, label) => {
     const active = activeFilter?.kind === kind && activeFilter?.value === value;
-    return `<button class="chip ${active ? 'energy-match' : ''}" data-kind="${kind}" data-value="${esc(value)}" style="cursor:pointer">${label}</button>`;
+    return `<button class="chip ${active ? 'chip-active' : ''}" data-kind="${kind}" data-value="${esc(value)}" style="cursor:pointer">${label}</button>`;
   };
   const colorChip = (c) => filterChip('color', c,
     `<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${esc(c)}"></span>`);
@@ -32,10 +31,9 @@ export function renderTasks(view, rerender) {
   view.innerHTML = `
     <h1 class="screen-title">Tasks</h1>
     <p class="screen-sub">${open.length} open · ${doneCount} done</p>
-    ${(tagSet.length || hasEfforts || colorSet.length) ? `
+    ${(tagSet.length || colorSet.length) ? `
       <div class="task-meta" id="filters" style="margin-top:12px">
         ${colorSet.map(colorChip).join('')}
-        ${hasEfforts ? filterChip('effort', 'quick', 'quick wins') + filterChip('effort', 'deep', 'deep focus') : ''}
         ${tagSet.map(t => filterChip('tag', t, esc('#' + t))).join('')}
       </div>` : ''}
     <div id="groups"></div>
@@ -119,7 +117,6 @@ export function renderTasks(view, rerender) {
   if (activeFilter) {
     let matches = tasks.filter(t => !t.completedAt);
     if (activeFilter.kind === 'tag') matches = matches.filter(t => t.tags.includes(activeFilter.value));
-    if (activeFilter.kind === 'effort') matches = matches.filter(t => t.effort === activeFilter.value);
     if (activeFilter.kind === 'color') matches = matches.filter(t => t.color === activeFilter.value);
     if (!matches.length) {
       groupsEl.innerHTML = `<div class="empty"><p>Nothing matches this filter.</p></div>`;

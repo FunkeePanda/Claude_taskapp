@@ -20,7 +20,6 @@ export function createTask(fields) {
     allDay: fields.allDay ?? true,
     priority: fields.priority ?? 1,   // 0 low / 1 normal / 2 high
     tags: fields.tags || [],
-    effort: fields.effort ?? null,    // 'quick' | 'deep' | null
     reminder: fields.reminder ?? null, // { intervalMin, startAt|null } | null
     timer: fields.timer ?? null,       // { durationMin } — how long this should take
     breaks: fields.breaks ?? null,     // { workMin, breakMin } — work/break cycle
@@ -121,17 +120,4 @@ export function settings() {
 export function updateSettings(fields) {
   Object.assign(load().settings, fields);
   save();
-}
-
-// Energy is transient: reads as null once 4 hours have passed.
-const ENERGY_TTL_MS = 4 * 60 * 60 * 1000;
-
-export function currentEnergy(now = Date.now()) {
-  const s = settings();
-  if (!s.energy || !s.energySetAt || now - s.energySetAt > ENERGY_TTL_MS) return null;
-  return s.energy;
-}
-
-export function setEnergy(level) {
-  updateSettings({ energy: level, energySetAt: level ? Date.now() : null });
 }

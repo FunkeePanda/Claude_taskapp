@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { score, todayList, energyAdjust, matchesEnergy, isOverdue, isDueToday } from '../www/js/focus.js';
+import { score, todayList, isOverdue, isDueToday } from '../www/js/focus.js';
 
 const NOW = new Date(2026, 6, 6, 10, 0, 0).getTime(); // Mon Jul 6, 10:00
 const HOUR = 3600000;
@@ -10,7 +10,7 @@ let nextId = 1;
 function task(fields = {}) {
   return {
     id: nextId++, title: 't', notes: '', due: null, allDay: true,
-    priority: 1, tags: [], effort: null, reminder: null,
+    priority: 1, tags: [], reminder: null,
     createdAt: NOW - DAY, completedAt: null, ...fields,
   };
 }
@@ -73,27 +73,6 @@ test('completed tasks never appear', () => {
   const list = todayList(tasks, NOW, 5);
   assert.equal(list.length, 1);
   assert.equal(list[0].completedAt, null);
-});
-
-test('low energy boosts quick wins and demotes deep work', () => {
-  assert.ok(energyAdjust(task({ effort: 'quick' }), 'low') > 0);
-  assert.ok(energyAdjust(task({ effort: 'deep' }), 'low') < 0);
-  assert.equal(energyAdjust(task({ effort: 'quick' }), null), 0);
-  assert.equal(energyAdjust(task(), 'low'), 0);
-});
-
-test('energy re-ranks the fill but never hides overdue', () => {
-  const overdueDeep = task({ due: NOW - HOUR, effort: 'deep' });
-  const quickWin = task({ effort: 'quick' });
-  const list = todayList([overdueDeep, quickWin], NOW, 5, 'low');
-  assert.ok(list.some(t => t.id === overdueDeep.id));
-});
-
-test('matchesEnergy badge helper', () => {
-  assert.ok(matchesEnergy(task({ effort: 'quick' }), 'low'));
-  assert.ok(matchesEnergy(task({ effort: 'deep' }), 'high'));
-  assert.ok(!matchesEnergy(task({ effort: 'deep' }), 'low'));
-  assert.ok(!matchesEnergy(task(), 'high'));
 });
 
 test('isDueToday true only for future-today', () => {

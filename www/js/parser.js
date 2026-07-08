@@ -3,7 +3,7 @@
 //
 // parse("pay rent friday 5pm high priority every 2h #bills", now) →
 // { title:"pay rent", due:<ms>, allDay:false, priority:2,
-//   effort:null, tags:["bills"], reminder:{intervalMin:120,startAt:null},
+//   tags:["bills"], reminder:{intervalMin:120,startAt:null},
 //   matches:[{type:'due',text:'friday'},…] }
 
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -30,7 +30,7 @@ export function parse(input, now = new Date()) {
   const matches = [];
   const out = {
     title: '', due: null, allDay: true, priority: 1,
-    effort: null, tags: [], reminder: null, matches,
+    tags: [], reminder: null, matches,
   };
 
   let day = null;        // Date at local midnight
@@ -64,10 +64,6 @@ export function parse(input, now = new Date()) {
   // ---- priority ----
   consume(/\b(high priority|urgent|important|asap)\b|!!/i, 'priority', () => { out.priority = 2; }) ||
   consume(/\b(low priority|someday|whenever)\b/i, 'priority', () => { out.priority = 0; });
-
-  // ---- effort ----
-  consume(/\b(quick win|quick|easy)\b/i, 'effort', () => { out.effort = 'quick'; }) ||
-  consume(/\b(deep focus|deep|big)\b/i, 'effort', () => { out.effort = 'deep'; });
 
   // ---- tags ----
   let tm;

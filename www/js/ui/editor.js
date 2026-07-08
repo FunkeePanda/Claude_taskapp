@@ -31,7 +31,6 @@ const ICONS = {
   date: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
   timing: '<svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg>',
   priority: '<svg viewBox="0 0 24 24"><path d="M5 21V4m0 0h13l-2.5 4L18 12H5"/></svg>',
-  effort: '<svg viewBox="0 0 24 24"><path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z"/></svg>',
   color: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18c-2 0-2-1.5-1-2.5s.5-2.5-1.5-2.5H7"/></svg>',
   tags: '<svg viewBox="0 0 24 24"><path d="M3 11l9-9 9 9-9 9-9-9z" transform="rotate(45 12 12)"/><circle cx="9" cy="9" r="1.4"/></svg>',
   notes: '<svg viewBox="0 0 24 24"><path d="M5 3h14v18l-4-3H5V3zM8 8h8M8 12h5"/></svg>',
@@ -163,7 +162,6 @@ function optionToolbar(task) {
       ${chip('date', 'Date')}
       ${chip('timing', 'Timing')}
       ${chip('priority', 'Priority')}
-      ${chip('effort', 'Effort')}
       ${chip('color', 'Color')}
       ${chip('tags', 'Tags')}
       ${chip('notes', 'Notes')}
@@ -225,14 +223,6 @@ function optionToolbar(task) {
         </div>
       </div>
 
-      <div class="opt-panel" data-panel="effort" hidden>
-        <div class="segment" id="f-effort">
-          <button data-v="" ${!task.effort ? 'class="active"' : ''} type="button">—</button>
-          <button data-v="quick" ${task.effort === 'quick' ? 'class="active"' : ''} type="button">Quick win</button>
-          <button data-v="deep" ${task.effort === 'deep' ? 'class="active"' : ''} type="button">Deep focus</button>
-        </div>
-      </div>
-
       <div class="opt-panel" data-panel="color" hidden>
         <div class="swatch-row" id="f-color">
           <button class="swatch none ${!task.color ? 'sel' : ''}" data-v="" aria-label="No color" type="button">✕</button>
@@ -273,17 +263,15 @@ function bindOptionToolbar(sheet, cleared, task) {
   });
 
   // segments
-  for (const id of ['f-priority', 'f-effort']) {
-    sheet.querySelector('#' + id)?.addEventListener('click', (e) => {
-      const btn = e.target.closest('button');
-      if (!btn) return;
-      const seg = sheet.querySelector('#' + id);
-      seg.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      cleared.add(id === 'f-priority' ? 'priority' : 'effort');
-      updateChipSummaries(sheet);
-    });
-  }
+  sheet.querySelector('#f-priority')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    const seg = sheet.querySelector('#f-priority');
+    seg.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    cleared.add('priority');
+    updateChipSummaries(sheet);
+  });
 
   // color swatches
   sheet.querySelector('#f-color').addEventListener('click', (e) => {
@@ -468,9 +456,6 @@ function updateChipSummaries(sheet) {
   const prio = sheet.querySelector('#f-priority button.active')?.dataset.v;
   set('priority', prio === '0' || prio === '2', prio === '2' ? 'High' : 'Low');
 
-  const eff = sheet.querySelector('#f-effort button.active')?.dataset.v;
-  set('effort', !!eff, eff === 'quick' ? 'Quick win' : 'Deep focus');
-
   const color = sheet.querySelector('#f-color .swatch.sel:not(.none)')?.dataset.v;
   set('color', !!color, color ? `<span class="opt-dot" style="background:${color}"></span>` : '');
 
@@ -496,10 +481,6 @@ function syncManualFields(sheet, parsed, cleared) {
   if (!cleared.has('priority')) {
     sheet.querySelectorAll('#f-priority button').forEach(b =>
       b.classList.toggle('active', b.dataset.v === String(parsed.priority)));
-  }
-  if (!cleared.has('effort')) {
-    sheet.querySelectorAll('#f-effort button').forEach(b =>
-      b.classList.toggle('active', b.dataset.v === String(parsed.effort ?? '')));
   }
   if (!cleared.has('nag')) {
     const toggle = sheet.querySelector('#f-notify');
@@ -569,7 +550,6 @@ function collectFields(sheet, parsed) {
     notes: sheet.querySelector('#f-notes')?.value || '',
     due, allDay,
     priority: parseInt(seg('f-priority') || '1', 10),
-    effort: seg('f-effort') || null,
     reminder, timer, breaks,
     muteDuringSession: on('#f-mute'),
     color: sheet.querySelector('#f-color .swatch.sel:not(.none)')?.dataset.v || null,
@@ -589,7 +569,6 @@ function parseChipsHtml(p) {
     chips.push(chip('due', 'due today', esc(label)));
   }
   if (p.priority !== 1) chips.push(chip('priority', p.priority === 2 ? 'prio-high' : '', p.priority === 2 ? 'high priority' : 'low priority'));
-  if (p.effort) chips.push(chip('effort', 'effort', p.effort === 'quick' ? 'quick win' : 'deep focus'));
   if (p.reminder) chips.push(chip('nag', 'nag', 'every ' + esc(fmtInterval(p.reminder.intervalMin))));
   for (const t of p.tags) chips.push(`<span class="chip tag">#${esc(t)}</span>`);
   return chips.join('');
@@ -598,7 +577,6 @@ function parseChipsHtml(p) {
 function clearField(parsed, type) {
   if (type === 'due' || type === 'time') { parsed.due = null; parsed.allDay = true; }
   if (type === 'priority') parsed.priority = 1;
-  if (type === 'effort') parsed.effort = null;
   if (type === 'nag') parsed.reminder = null;
 }
 

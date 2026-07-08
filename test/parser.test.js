@@ -116,18 +116,6 @@ test('hourly', () => {
   assert.equal(r.reminder.intervalMin, 60);
 });
 
-test('effort quick', () => {
-  const r = parse('quick email to boss', NOW);
-  assert.equal(r.effort, 'quick');
-  assert.equal(r.title, 'email to boss');
-});
-
-test('effort deep', () => {
-  const r = parse('write report deep focus', NOW);
-  assert.equal(r.effort, 'deep');
-  assert.equal(r.title, 'write report');
-});
-
 test('tags', () => {
   const r = parse('buy cake #errands #birthday', NOW);
   assert.deepEqual(r.tags, ['errands', 'birthday']);
@@ -145,11 +133,10 @@ test('urgent', () => {
 });
 
 test('kitchen sink', () => {
-  const r = parse('finish slides friday 5pm high priority deep focus every 45 min #work', NOW);
+  const r = parse('finish slides friday 5pm high priority every 45 min #work', NOW);
   assert.equal(r.title, 'finish slides');
   assert.equal(r.due, d(2026, 6, 10, 17, 0));
   assert.equal(r.priority, 2);
-  assert.equal(r.effort, 'deep');
   assert.deepEqual(r.tags, ['work']);
   assert.equal(r.reminder.intervalMin, 45);
 });
