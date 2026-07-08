@@ -53,7 +53,7 @@ export function openSheet(html) {
   let startY = null, dy = 0;
   sheet.addEventListener('touchstart', (e) => {
     if (sheet.scrollTop > 0) return;
-    if (e.target.closest('.wheel-row, .wheel, input, textarea, select')) return;
+    if (e.target.closest('.opt-panel, .wheel-row, .wheel, input, textarea, select, .switch, .segment')) return;
     startY = e.touches[0].clientY;
     dy = 0;
   }, { passive: true });
