@@ -27,6 +27,28 @@ to update (that would wipe your data).
   Battery → **Unrestricted**. Some phones (Xiaomi, Huawei, Samsung with
   aggressive battery savers) kill scheduled alarms otherwise.
 
+## Install on iPhone / iPad
+
+There's no APK equivalent on iOS — Apple only allows native apps onto a
+phone through a developer enrolled in the Apple Developer Program ($99/yr).
+Until that's set up, install Focus as a **home-screen web app** instead —
+same interface, same data model, just delivered through Safari:
+
+1. Open **https://funkeepanda.github.io/Claude_taskapp/** in **Safari**
+   (must be Safari — Chrome/Firefox on iOS can't add home-screen apps).
+2. Tap the **Share** icon (square with an arrow) in the toolbar.
+3. Scroll down and tap **Add to Home Screen**, then **Add**.
+4. Open Focus from your home screen like any other app — it runs full-screen,
+   no browser chrome.
+
+**The one thing that doesn't work here:** background "notify me every X
+minutes" reminders. iOS doesn't let home-screen web apps schedule reliable
+background notifications the way the Android app can. Everything else —
+tasks, subtasks, the calendar, colors, focus sessions while the app is
+open — works exactly the same. A full native iOS app (with working
+reminders, distributed via TestFlight) is possible later if there's an
+Apple Developer account to build it against.
+
 ## What it does
 
 - **Smart Today view** — picks a small focus list from due dates, priority,
