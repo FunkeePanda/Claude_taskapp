@@ -155,7 +155,6 @@ export function taskCard(task, {
   const wrap = document.createElement('div');
   wrap.className = 'collapse-wrap';
   wrap.style.setProperty('--i', index);
-  if (depth) wrap.style.marginLeft = Math.min(depth, 3) * 22 + 'px';
   const progressChip = progress && progress.total
     ? `<span class="chip progress">${progress.done}/${progress.total}</span>` : '';
   wrap.innerHTML = `
@@ -210,24 +209,49 @@ export function taskCard(task, {
     completeWithAnimation(task, wrap, check, onComplete);
   });
 
-  card.addEventListener('click', () => onOpen?.(task));
+  let lpFired = false;
+  card.addEventListener('click', () => {
+    if (lpFired) { lpFired = false; return; } // long-press consumed this tap
+    onOpen?.(task);
+  });
 
   // swipe right → add a subtask; swipe left on a completed task → move
-  // it to the Done section
-  let startX = null, dx = 0;
-  card.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; dx = 0; }, { passive: true });
+  // it to Done; hold half a second → toggle subtasks
+  let startX = null, startY = null, dx = 0, moved = false, lpTimer = null;
+  card.addEventListener('touchstart', (e) => {
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    dx = 0;
+    moved = false;
+    lpFired = false;
+    clearTimeout(lpTimer);
+    lpTimer = setTimeout(() => {
+      if (moved) return;
+      lpFired = true;
+      navigator.vibrate?.(15);
+      if (hasChildren) onToggleCollapse?.(task);
+    }, 500);
+  }, { passive: true });
   card.addEventListener('touchmove', (e) => {
     if (startX == null) return;
     dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+    if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+      moved = true;
+      clearTimeout(lpTimer);
+    }
     card.style.transform = `translateX(${Math.max(-120, Math.min(dx, 120))}px)`;
   }, { passive: true });
   card.addEventListener('touchend', () => {
+    clearTimeout(lpTimer);
     card.style.transform = '';
-    if (dx > 90) {
-      onAddSubtask?.(task);
-    } else if (dx < -90 && task.completedAt && !task.archived) {
-      setArchived(task.id, true);
-      onArchived?.(task);
+    if (!lpFired) {
+      if (dx > 90) {
+        onAddSubtask?.(task);
+      } else if (dx < -90 && task.completedAt && !task.archived) {
+        setArchived(task.id, true);
+        onArchived?.(task);
+      }
     }
     startX = null;
   });

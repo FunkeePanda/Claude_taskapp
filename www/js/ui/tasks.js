@@ -8,7 +8,8 @@ import { allTasks, setCompleted, updateTask, childrenOf, progressOf, getTask } f
 import { taskCard, toast, esc } from './components.js';
 import { openEditSheet, openAddSheet } from './editor.js';
 
-let activeFilter = null; // { kind: 'tag'|'effort', value }
+let activeFilter = null; // { kind: 'tag'|'effort'|'color', value }
+let pendingReveal = null; // task id whose subtree should slide open after render
 
 export function renderTasks(view, rerender) {
   const now = Date.now();
@@ -59,10 +60,30 @@ export function renderTasks(view, rerender) {
     }
     rerender();
   };
-  const cardOpts = (task, i, depth = 0) => {
+  // expanding slides the subtree down from behind the parent; collapsing
+  // slides it back up, then commits the state
+  const toggleCollapse = (t) => {
+    if (t.collapsed) {
+      updateTask(t.id, { collapsed: false });
+      pendingReveal = t.id;
+      rerender();
+    } else {
+      const clip = view.querySelector(`.task-card[data-id="${t.id}"]`)
+        ?.closest('.tree-node')?.querySelector(':scope > .subtree-clip');
+      if (clip) {
+        clip.classList.add('closed');
+        setTimeout(() => { updateTask(t.id, { collapsed: true }); rerender(); }, 300);
+      } else {
+        updateTask(t.id, { collapsed: true });
+        rerender();
+      }
+    }
+  };
+
+  const cardOpts = (task, i) => {
     const kids = childrenOf(task.id).filter(t => !t.archived);
     return {
-      index: i, now, depth,
+      index: i, now,
       onComplete,
       onOpen: (t) => openEditSheet(t.id, rerender),
       onAddSubtask: (t) => openAddSheet(rerender, { parentId: t.id }),
@@ -70,18 +91,28 @@ export function renderTasks(view, rerender) {
       onSession: () => rerender(),
       hasChildren: kids.length > 0,
       collapsed: task.collapsed,
-      onToggleCollapse: (t) => { updateTask(t.id, { collapsed: !t.collapsed }); rerender(); },
+      onToggleCollapse: toggleCollapse,
       progress: childrenOf(task.id).length ? progressOf(task.id) : null,
     };
   };
 
-  // subtree renderer: parent, then (unless collapsed) unarchived children
-  const renderTree = (holder, task, i, depth) => {
-    holder.appendChild(taskCard(task, cardOpts(task, i, depth)));
-    if (task.collapsed) return;
-    for (const child of childrenOf(task.id)) {
-      if (!child.archived) renderTree(holder, child, i, depth + 1);
+  // tree renderer: card, then its unarchived children in a connected,
+  // collapsible subtree
+  const renderTree = (holder, task, i) => {
+    const node = document.createElement('div');
+    node.className = 'tree-node';
+    node.appendChild(taskCard(task, cardOpts(task, i)));
+    const kids = childrenOf(task.id).filter(t => !t.archived);
+    if (kids.length && !task.collapsed) {
+      const clip = document.createElement('div');
+      clip.className = 'subtree-clip' + (pendingReveal === task.id ? ' closed' : '');
+      const sub = document.createElement('div');
+      sub.className = 'subtree';
+      kids.forEach((child, j) => renderTree(sub, child, j));
+      clip.appendChild(sub);
+      node.appendChild(clip);
     }
+    holder.appendChild(node);
   };
 
   // ---------- filtered: flat matches, no nesting ----------
@@ -126,9 +157,19 @@ export function renderTasks(view, rerender) {
     groupsEl.insertAdjacentHTML('beforeend', `<div class="section-label">${g.label}</div>`);
     const holder = document.createElement('div');
     holder.className = 'stagger';
-    g.items.forEach((t, i) => renderTree(holder, t, i, 0));
+    g.items.forEach((t, i) => renderTree(holder, t, i));
     groupsEl.appendChild(holder);
     rendered += g.items.length;
+  }
+
+  // a freshly-expanded subtree starts closed, then slides open
+  if (pendingReveal != null) {
+    const id = pendingReveal;
+    pendingReveal = null;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      view.querySelector(`.task-card[data-id="${id}"]`)
+        ?.closest('.tree-node')?.querySelector(':scope > .subtree-clip')?.classList.remove('closed');
+    }));
   }
 
   if (!rendered && !archived.length) {

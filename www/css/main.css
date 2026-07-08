@@ -371,7 +371,42 @@ input[type='datetime-local'].input, input[type='date'].input, input[type='time']
 .status-pill.ok { background: rgba(62, 207, 142, 0.15); color: var(--good); }
 .status-pill.bad { background: rgba(255, 107, 94, 0.14); color: var(--danger); }
 
-/* ---------- Subtasks ---------- */
+/* ---------- Subtasks: tree structure with connector lines ---------- */
+:root { --tree-line: rgba(255, 255, 255, 0.16); }
+
+.tree-node { position: relative; }
+/* indent via padding (not margin) so the connector lines stay inside
+   the box and survive the slide animation's overflow:hidden */
+.subtree { padding-left: 34px; position: relative; }
+
+/* elbow from the parent's spine into this card */
+.subtree > .tree-node::before {
+  content: '';
+  position: absolute; left: -20px; top: -10px;
+  width: 17px; height: 42px;
+  border-left: 2px solid var(--tree-line);
+  border-bottom: 2px solid var(--tree-line);
+  border-bottom-left-radius: 14px;
+  pointer-events: none;
+}
+/* the spine continues past every sibling except the last */
+.subtree > .tree-node:not(:last-child)::after {
+  content: '';
+  position: absolute; left: -20px; top: -10px; bottom: -9px;
+  border-left: 2px solid var(--tree-line);
+  pointer-events: none;
+}
+
+/* slide-down reveal: subtasks emerge from behind the parent card */
+.subtree-clip {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.28s ease;
+}
+.subtree-clip > .subtree { overflow: hidden; min-height: 0; transition: transform 0.28s ease, opacity 0.28s ease; }
+.subtree-clip.closed { grid-template-rows: 0fr; }
+.subtree-clip.closed > .subtree { transform: translateY(-14px); opacity: 0; }
+
 .parent-label {
   font-size: 0.7rem; font-weight: 600; color: var(--text-faint);
   margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

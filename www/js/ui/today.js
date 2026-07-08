@@ -44,18 +44,45 @@ export function renderToday(view, rerender) {
     }
     rerender();
   };
-  const opts = (i, task) => ({
+  const opts = (i, task, nested) => ({
     index: i, now,
     onComplete,
     onOpen: (t) => openEditSheet(t.id, rerender),
     onAddSubtask: (t) => openAddSheet(rerender, { parentId: t.id }),
     onArchived: () => { toast('Moved to Done'); rerender(); },
     onSession: () => rerender(),
-    parentLabel: task.parentId ? getTask(task.parentId)?.title : null,
+    // context label only when the parent card isn't right above it
+    parentLabel: !nested && task.parentId ? getTask(task.parentId)?.title : null,
   });
 
+  // Same tree look as the Tasks page: when a listed task's parent is
+  // also in the same section, nest it under the parent with connector
+  // lines instead of listing it separately.
+  const renderSection = (holder, items) => {
+    const ids = new Set(items.map(t => t.id));
+    const kidsOf = (id) => items.filter(t => t.parentId === id);
+    const renderNode = (into, t, i, nested) => {
+      const node = document.createElement('div');
+      node.className = 'tree-node';
+      node.appendChild(taskCard(t, opts(i, t, nested)));
+      const kids = kidsOf(t.id);
+      if (kids.length) {
+        const clip = document.createElement('div');
+        clip.className = 'subtree-clip';
+        const sub = document.createElement('div');
+        sub.className = 'subtree';
+        kids.forEach((k, j) => renderNode(sub, k, j, true));
+        clip.appendChild(sub);
+        node.appendChild(clip);
+      }
+      into.appendChild(node);
+    };
+    const roots = items.filter(t => !t.parentId || !ids.has(t.parentId));
+    roots.forEach((t, i) => renderNode(holder, t, i, false));
+  };
+
   const overdueEl = view.querySelector('#overdue-list');
-  overdue.forEach((t, i) => overdueEl.appendChild(taskCard(t, opts(i, t))));
+  if (overdueEl) renderSection(overdueEl, overdue);
 
   const focusEl = view.querySelector('#focus-list');
   if (!focus.length && !overdue.length) {
@@ -63,6 +90,6 @@ export function renderToday(view, rerender) {
       ? `<div class="empty"><p>Nothing pressing today.<br>Check the Tasks tab or add something new.</p></div>`
       : `<div class="empty"><p>All clear.<br>Tap <strong>+</strong> to capture your first task.<br><span style="font-size:0.8rem;color:var(--text-faint)">Try: “pay rent friday 5pm every 2h”</span></p></div>`;
   } else {
-    focus.forEach((t, i) => focusEl.appendChild(taskCard(t, opts(overdue.length + i, t))));
+    renderSection(focusEl, focus);
   }
 }
