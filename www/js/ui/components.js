@@ -46,10 +46,14 @@ export function openSheet(html) {
   scrim.addEventListener('click', closeSheet);
   sheet.querySelector('.sheet-close').addEventListener('click', closeSheet);
 
-  // swipe-down to dismiss (only when the sheet isn't scrolled)
+  // swipe-down to dismiss (only when the sheet isn't scrolled). A touch
+  // that starts on a control with its own gesture — the time wheels,
+  // text/date inputs — belongs to that control alone and never drags
+  // the sheet.
   let startY = null, dy = 0;
   sheet.addEventListener('touchstart', (e) => {
     if (sheet.scrollTop > 0) return;
+    if (e.target.closest('.wheel-row, .wheel, input, textarea, select')) return;
     startY = e.touches[0].clientY;
     dy = 0;
   }, { passive: true });
