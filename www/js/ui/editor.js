@@ -354,6 +354,11 @@ function bindOptionToolbar(sheet, cleared, task) {
     }, { passive: true });
   }
 
+  // the whole row is a drag surface: a vertical pan that starts between
+  // the wheels (band, gaps, unit labels) spins the nearest wheel, so
+  // fingers don't have to land exactly on the numbers
+  for (const row of sheet.querySelectorAll('.wheel-row')) bindRowDrag(row);
+
   updateChipSummaries(sheet);
 }
 
@@ -401,6 +406,45 @@ function setWheel(el, value) {
   el.dataset.prog = '1';
   el.scrollTop = value * WHEEL_ITEM_H;
   setTimeout(() => delete el.dataset.prog, 80);
+}
+
+// Touches that start on a .wheel scroll natively; everywhere else in the
+// row we drive the horizontally-nearest wheel ourselves and snap to the
+// closest item on release.
+function bindRowDrag(row) {
+  let target = null, lastY = 0;
+  row.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.wheel')) return; // native scroll owns this touch
+    const wheels = [...row.querySelectorAll('.wheel')];
+    if (!wheels.length) return;
+    target = wheels.reduce((best, w) => {
+      const r = w.getBoundingClientRect();
+      const d = Math.abs(e.clientX - (r.left + r.width / 2));
+      return !best || d < best.d ? { w, d } : best;
+    }, null).w;
+    // mandatory snap re-quantizes every programmatic scrollTop change,
+    // swallowing sub-item drag deltas — suspend it for the drag
+    target.style.scrollSnapType = 'none';
+    lastY = e.clientY;
+    row.setPointerCapture(e.pointerId);
+  });
+  row.addEventListener('pointermove', (e) => {
+    if (!target) return;
+    target.scrollTop -= e.clientY - lastY; // fires 'scroll' → dataset.val updates
+    lastY = e.clientY;
+  });
+  const release = () => {
+    if (!target) return;
+    const el = target;
+    target = null;
+    const snapped = Math.max(0, Math.round(el.scrollTop / WHEEL_ITEM_H));
+    el.dataset.val = String(snapped);
+    el.scrollTo({ top: snapped * WHEEL_ITEM_H, behavior: 'smooth' });
+    // restore snapping once the smooth glide has landed
+    setTimeout(() => { el.style.scrollSnapType = ''; }, 350);
+  };
+  row.addEventListener('pointerup', release);
+  row.addEventListener('pointercancel', release);
 }
 
 function positionWheels(sheet, prefix, minutes) {

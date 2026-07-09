@@ -33,10 +33,18 @@ body {
   min-height: 100vh;
   overscroll-behavior-y: none;
   -webkit-tap-highlight-color: transparent;
+  /* Safari needs the -webkit- prefix, and iOS also needs the long-press
+     callout suppressed, or text outside inputs still highlights */
+  -webkit-user-select: none;
   user-select: none;
+  -webkit-touch-callout: none;
 }
 
-input, textarea { user-select: text; }
+input, textarea {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
 
 /* ---------- Layout ---------- */
 .view {
@@ -314,27 +322,30 @@ input[type='datetime-local'].input, input[type='date'].input, input[type='time']
   background: var(--bg-elev-2); border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: 8px 0; margin-top: 10px;
   position: relative;
+  /* the whole row is a drag surface (JS forwards vertical pans to the
+     nearest wheel), so the browser must not claim these touches */
+  touch-action: none;
 }
 .wheel-row::before {
   content: '';
   position: absolute; left: 10px; right: 10px; top: 50%;
-  height: 36px; transform: translateY(-50%);
-  background: var(--accent-soft); border-radius: 9px;
+  height: 68px; transform: translateY(-50%);
+  background: var(--accent-soft); border-radius: 12px;
   pointer-events: none;
 }
 .wheel {
-  height: 108px; width: 64px; overflow-y: scroll;
+  height: 180px; width: 72px; overflow-y: scroll;
   scroll-snap-type: y mandatory;
   scrollbar-width: none;
   /* a wheel that hits its end must NOT hand the scroll to the sheet */
   overscroll-behavior: contain;
   touch-action: pan-y;
   position: relative;
-  mask-image: linear-gradient(transparent, #000 30%, #000 70%, transparent);
-  -webkit-mask-image: linear-gradient(transparent, #000 30%, #000 70%, transparent);
+  mask-image: linear-gradient(transparent, #000 32%, #000 68%, transparent);
+  -webkit-mask-image: linear-gradient(transparent, #000 32%, #000 68%, transparent);
 }
 .wheel::-webkit-scrollbar { display: none; }
-.wheel .pad { height: 36px; }
+.wheel .pad { height: 72px; }
 .wheel .item {
   height: 36px; display: flex; align-items: center; justify-content: center;
   scroll-snap-align: center;

@@ -1,10 +1,12 @@
 // Today view: greeting and the focused list. Completed tasks stay in
 // place (greyed) until the user swipes them left into Done.
 
-import { allTasks, settings, setCompleted, getTask } from '../model.js';
+import { allTasks, settings, setCompleted, getTask, updateTask, childrenOf, progressOf } from '../model.js';
 import { todayList, isOverdue } from '../focus.js';
 import { taskCard, toast } from './components.js';
 import { openEditSheet, openAddSheet } from './editor.js';
+
+let pendingReveal = null; // task id whose subtree should slide open after render
 
 export function renderToday(view, rerender) {
   const now = Date.now();
@@ -44,31 +46,55 @@ export function renderToday(view, rerender) {
     }
     rerender();
   };
-  const opts = (i, task, nested) => ({
+  // expanding slides the subtree down from behind the parent; collapsing
+  // slides it back up, then commits — same behavior as the Tasks page
+  const toggleCollapse = (t) => {
+    if (t.collapsed) {
+      updateTask(t.id, { collapsed: false });
+      pendingReveal = t.id;
+      rerender();
+    } else {
+      const clip = view.querySelector(`.task-card[data-id="${t.id}"]`)
+        ?.closest('.tree-node')?.querySelector(':scope > .subtree-clip');
+      if (clip) {
+        clip.classList.add('closed');
+        setTimeout(() => { updateTask(t.id, { collapsed: true }); rerender(); }, 300);
+      } else {
+        updateTask(t.id, { collapsed: true });
+        rerender();
+      }
+    }
+  };
+
+  const opts = (i, task, nested, kids) => ({
     index: i, now,
     onComplete,
     onOpen: (t) => openEditSheet(t.id, rerender),
     onAddSubtask: (t) => openAddSheet(rerender, { parentId: t.id }),
     onArchived: () => { toast('Moved to Done'); rerender(); },
     onSession: () => rerender(),
+    hasChildren: kids.length > 0,
+    collapsed: task.collapsed,
+    onToggleCollapse: toggleCollapse,
+    progress: childrenOf(task.id).length ? progressOf(task.id) : null,
     // context label only when the parent card isn't right above it
     parentLabel: !nested && task.parentId ? getTask(task.parentId)?.title : null,
   });
 
-  // Same tree look as the Tasks page: when a listed task's parent is
-  // also in the same section, nest it under the parent with connector
-  // lines instead of listing it separately.
+  // Same tree look and controls as the Tasks page: when a listed task's
+  // parent is also in the same section, nest it under the parent with
+  // connector lines, a collapse chevron, and the hold-swipe gesture.
   const renderSection = (holder, items) => {
     const ids = new Set(items.map(t => t.id));
     const kidsOf = (id) => items.filter(t => t.parentId === id);
     const renderNode = (into, t, i, nested) => {
       const node = document.createElement('div');
       node.className = 'tree-node';
-      node.appendChild(taskCard(t, opts(i, t, nested)));
       const kids = kidsOf(t.id);
-      if (kids.length) {
+      node.appendChild(taskCard(t, opts(i, t, nested, kids)));
+      if (kids.length && !t.collapsed) {
         const clip = document.createElement('div');
-        clip.className = 'subtree-clip';
+        clip.className = 'subtree-clip' + (pendingReveal === t.id ? ' closed' : '');
         const sub = document.createElement('div');
         sub.className = 'subtree';
         kids.forEach((k, j) => renderNode(sub, k, j, true));

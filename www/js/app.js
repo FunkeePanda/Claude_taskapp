@@ -77,6 +77,13 @@ initNotifications((actionId, taskId) => {
   rerender();
 });
 
+// Keep the live chips (session countdown, next-nag minutes) current.
+// Paused while a sheet is open so a re-render never eats an edit.
+setInterval(() => {
+  if (document.querySelector('#sheet-root .sheet')) return;
+  rerender();
+}, 30 * 1000);
+
 // Reconcile on every resume: refills the rolling reminder window.
 App.addListener('resume', () => reconcile());
 

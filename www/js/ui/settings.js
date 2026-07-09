@@ -45,6 +45,10 @@ export async function renderSettings(view, rerender) {
       <div class="row">
         <button class="btn secondary block" id="test-nag">Test notification in 2 minutes</button>
       </div>
+      ${!isNative ? `
+      <div class="row">
+        <div class="sub">🔇 No sound? Your iPhone decides that, not the app: Settings → Notifications → Focus → turn on <b>Sounds</b>. Silent-mode switch and Focus/Do-Not-Disturb also mute it.</div>
+      </div>` : ''}
     </div>
 
     <div class="section-label">Focus</div>

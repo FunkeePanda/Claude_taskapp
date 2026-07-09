@@ -1,7 +1,7 @@
 // Shared UI pieces: toast, bottom sheet, confirm, task cards, formatting.
 
 import { setCompleted, completeWithDescendants, setArchived } from '../model.js';
-import { fmtInterval, startSession, stopSession, sessionActive } from '../reminders.js';
+import { fmtInterval, startSession, stopSession, sessionActive, sessionEndsAt } from '../reminders.js';
 
 export function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({
@@ -130,6 +130,14 @@ export function fmtDue(task, now = Date.now()) {
   return { text: (due.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + time).trim(), cls: '' };
 }
 
+function fmtMin(min) {
+  if (min >= 60) {
+    const h = Math.floor(min / 60), m = min % 60;
+    return m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
+  }
+  return `${min}m`;
+}
+
 export function taskChipsHtml(task, now = Date.now()) {
   const chips = [];
   if (task.color) {
@@ -137,9 +145,32 @@ export function taskChipsHtml(task, now = Date.now()) {
   }
   const due = fmtDue(task, now);
   if (due) chips.push(`<span class="chip due ${due.cls}">${esc(due.text)}</span>`);
-  if (sessionActive(task, now)) chips.push('<span class="chip nag">session running</span>');
+  if (sessionActive(task, now)) {
+    const ends = sessionEndsAt(task);
+    if (ends != null && task.timer) {
+      // counts down the whole session (breaks included) against the plan
+      const total = Math.round((ends - task.session.startedAt) / 60000);
+      const left = Math.max(0, Math.ceil((ends - now) / 60000));
+      chips.push(`<span class="chip nag">⏱ ${esc(fmtMin(left))} left of ${esc(fmtMin(total))}</span>`);
+    } else {
+      const elapsed = Math.max(0, Math.floor((now - task.session.startedAt) / 60000));
+      chips.push(`<span class="chip nag">⏱ ${esc(fmtMin(elapsed))} in</span>`);
+    }
+  } else if (task.timer && !task.completedAt) {
+    chips.push(`<span class="chip">⏱ ${esc(fmtMin(task.timer.durationMin))}</span>`);
+  }
   if (task.priority === 2) chips.push('<span class="chip prio-high">high</span>');
-  if (task.reminder) chips.push(`<span class="chip nag">every ${esc(fmtInterval(task.reminder.intervalMin))}</span>`);
+  if (task.reminder && !task.completedAt) {
+    // same anchor math as occurrencesFor(): when is the next nag?
+    const interval = task.reminder.intervalMin * 60000;
+    const anchor = task.reminder.startAt ?? task.createdAt ?? now;
+    let k = anchor > now ? 0 : Math.ceil((now - anchor) / interval);
+    if (anchor + k * interval <= now) k += 1;
+    const inMin = Math.max(1, Math.ceil((anchor + k * interval - now) / 60000));
+    chips.push(`<span class="chip nag">every ${esc(fmtInterval(task.reminder.intervalMin))} · next in ${esc(fmtMin(inMin))}</span>`);
+  } else if (task.reminder) {
+    chips.push(`<span class="chip nag">every ${esc(fmtInterval(task.reminder.intervalMin))}</span>`);
+  }
   for (const t of task.tags) chips.push(`<span class="chip tag">#${esc(t)}</span>`);
   return chips.join('');
 }
