@@ -10,10 +10,7 @@ crons = ["*/1 * * * *"]
 [[d1_databases]]
 binding = "DB"
 database_name = "focus-push-db"
-# Filled in after `wrangler d1 create focus-push-db` (Phase B — needs a
-# real Cloudflare account). Deploys will fail with a clear error until
-# this is set.
-database_id = "REPLACE_AFTER_D1_CREATE"
+database_id = "c0249191-4cb8-4e9e-9ab8-5054eb08716d"
 
 # VAPID_PRIVATE_KEY (JWK JSON string) is set via:
 #   wrangler secret put VAPID_PRIVATE_KEY

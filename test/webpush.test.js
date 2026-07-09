@@ -11,7 +11,7 @@ globalThis.localStorage = {
 
 const { webPushSupported, deviceId, urlBase64ToUint8Array } = await import('../www/js/webpush.js');
 
-test('webPushSupported is false without a deployed Worker/VAPID key (Phase A default)', () => {
+test('webPushSupported is false outside a browser (no serviceWorker/PushManager)', () => {
   assert.equal(webPushSupported, false);
 });
 

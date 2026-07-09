@@ -7,10 +7,8 @@
 // sessionNotifications) are reused unchanged — this module only differs
 // in where the computed schedule ends up.
 
-// Filled in during Phase B once the Worker is deployed. Until then,
-// webPushSupported is false and every other export in this file is inert.
-const WORKER_URL = '';
-const VAPID_PUBLIC_KEY = '';
+const WORKER_URL = 'https://focus-push.funkeepanda.workers.dev';
+const VAPID_PUBLIC_KEY = 'BExIdFZ2RG7aKUcXH4FC4m4PNEuVccju6tLoaW77YPdZPxHwbKoNo-E7uKeaE-rqmqWvLGwc4B9-56iCAtGIIuc';
 
 export const webPushSupported = !!(
   WORKER_URL && VAPID_PUBLIC_KEY &&

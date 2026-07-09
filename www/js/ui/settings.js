@@ -20,7 +20,7 @@ export async function renderSettings(view, rerender) {
     <div class="section-label">Notifications</div>
     <div class="card">
       <div class="row">
-        <div><div class="label">Platform</div><div class="sub">${isNative ? 'Android app' : webPushSupported ? 'Installed home-screen app — Web Push enabled' : isIOS ? 'iPhone/iPad (home screen app) — background reminders aren’t supported by Safari yet' : 'Web preview — reminders need the installed app'}</div></div>
+        <div><div class="label">Platform</div><div class="sub">${isNative ? 'Android app' : webPushSupported ? 'Web Push reminders enabled' : isIOS ? 'iPhone/iPad — add Focus to your Home Screen (Safari: Share → Add to Home Screen) to enable reminders' : 'Web preview — reminders need the installed app'}</div></div>
         <span class="status-pill ${isNative || webPushSupported ? 'ok' : 'bad'}">${isNative ? 'native' : webPushSupported ? 'push' : 'web'}</span>
       </div>
       <div class="row">
@@ -92,7 +92,7 @@ export async function renderSettings(view, rerender) {
     permPill.textContent = status;
     permPill.className = 'status-pill ' + (status === 'granted' ? 'ok' : 'bad');
     if (status === 'granted') permSub.textContent = 'Reminders can fire';
-    else if (status === 'unsupported' && isIOS) permSub.textContent = 'Not supported in Safari yet — everything else in the app still works';
+    else if (status === 'unsupported' && isIOS) permSub.textContent = 'Reminders need the Home Screen app — in Safari tap Share → Add to Home Screen, then enable here';
     else if (status === 'unsupported') permSub.textContent = 'Install the Android app for reminders';
     else {
       permSub.innerHTML = '<button class="btn small" id="req-perm" style="margin-top:6px">Enable notifications</button>';
@@ -161,7 +161,7 @@ export async function renderSettings(view, rerender) {
       toast(ok ? 'Scheduled! Close the app and wait 2 min' : 'Could not reach the push server');
       return;
     }
-    if (isIOS) { toast('Not supported in Safari on iPhone/iPad yet'); return; }
+    if (isIOS) { toast('Add Focus to your Home Screen first — Share → Add to Home Screen'); return; }
     toast('Notifications need the installed Android app');
   });
 
