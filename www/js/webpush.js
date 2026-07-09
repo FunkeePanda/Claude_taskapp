@@ -50,12 +50,14 @@ export async function webPushPermission() {
 }
 
 // Must be called from a user gesture (button click) — Notification
-// permission prompts are blocked otherwise on iOS Safari.
+// permission prompts are blocked otherwise on iOS Safari. Request the
+// permission FIRST: iOS ties the prompt to the tap's transient
+// activation, which an intervening await can consume.
 export async function ensureWebPushSubscription() {
   if (!webPushSupported) return false;
-  const reg = await registerServiceWorker();
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') return false;
+  const reg = await registerServiceWorker();
 
   let sub = await reg.pushManager.getSubscription();
   if (!sub) {

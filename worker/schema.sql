@@ -18,3 +18,12 @@ CREATE TABLE IF NOT EXISTS pending (
 );
 
 CREATE INDEX IF NOT EXISTS idx_pending_fire_at ON pending(fire_at);
+
+-- Rolling debug log (see GET /status). No titles/bodies — just delivery
+-- outcomes, so push failures are visible instead of silently swallowed.
+CREATE TABLE IF NOT EXISTS log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  at INTEGER NOT NULL,
+  kind TEXT NOT NULL,          -- 'cron' | 'send' | 'error'
+  detail TEXT NOT NULL
+);

@@ -12,11 +12,11 @@
 // is just that same reconcile() logic with the OS's alarm table swapped
 // for a D1 table.
 
-import { buildPushHTTPRequest } from '@pushforge/builder';
+import { sendPushNotification } from 'web-push-browser';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
@@ -47,6 +47,9 @@ export default {
       if (request.method === 'POST' && url.pathname === '/test') {
         return await handleTest(request, env);
       }
+      if (request.method === 'GET' && url.pathname === '/status') {
+        return await handleStatus(env);
+      }
       return json({ error: 'not found' }, 404);
     } catch (err) {
       return json({ error: String(err && err.message || err) }, 500);
@@ -55,7 +58,9 @@ export default {
 
   // Runs every minute (see wrangler.toml). Sends anything due and clears
   // it — best-effort, single attempt per firing; the client resyncs a
-  // fresh window on its next reconcile() regardless.
+  // fresh window on its next reconcile() regardless. Every attempt's
+  // outcome lands in the log table (GET /status) so a failing push
+  // service is visible instead of silently swallowed.
   async scheduled(event, env) {
     const now = Date.now();
     const due = await env.DB.prepare(
@@ -68,29 +73,32 @@ export default {
     const rows = due.results || [];
     if (!rows.length) return;
 
+    const vapidKeys = await vapidKeysFromJWK(env.VAPID_PRIVATE_KEY);
     const deadDevices = new Set();
     const sent = [];
+    const logs = [];
 
     for (const row of rows) {
+      const dev = String(row.device_id).slice(0, 8);
       let subscription;
-      try { subscription = JSON.parse(row.subscription); } catch { continue; }
+      try { subscription = JSON.parse(row.subscription); } catch {
+        logs.push(['error', `bad subscription JSON dev=${dev}`]);
+        continue;
+      }
       try {
-        const { endpoint, headers, body } = await buildPushHTTPRequest({
-          privateJWK: JSON.parse(env.VAPID_PRIVATE_KEY),
+        const resp = await sendPushNotification(
+          vapidKeys,
           subscription,
-          message: {
-            payload: { title: row.title, body: row.body, nid: row.nid },
-            adminContact: 'mailto:focus-app@example.com',
-            options: { ttl: 3600, urgency: 'high' },
-          },
-        });
-        const resp = await fetch(endpoint, { method: 'POST', headers, body });
+          'focus-app@example.com',
+          JSON.stringify({ title: row.title, body: row.body, nid: row.nid }),
+          { algorithm: 'aes128gcm', ttl: 3600, urgency: 'high' },
+        );
+        logs.push(['send', `dev=${dev} nid=${row.nid} status=${resp.status}`]);
         if (resp.status === 410 || resp.status === 404) {
           deadDevices.add(row.device_id);
         }
-      } catch {
-        // network/build failure on this attempt — fall through and clear
-        // the row anyway (see note below)
+      } catch (err) {
+        logs.push(['error', `dev=${dev} nid=${row.nid} ${String(err && err.message || err).slice(0, 200)}`]);
       }
       // Single best-effort attempt per firing, success or failure: we
       // deliberately don't retry a specific row next minute, since a
@@ -109,9 +117,51 @@ export default {
       stmts.push(env.DB.prepare('DELETE FROM subscriptions WHERE device_id = ?1').bind(deviceId));
       stmts.push(env.DB.prepare('DELETE FROM pending WHERE device_id = ?1').bind(deviceId));
     }
+    for (const [kind, detail] of logs) {
+      stmts.push(env.DB.prepare('INSERT INTO log (at, kind, detail) VALUES (?1, ?2, ?3)').bind(now, kind, detail));
+    }
+    stmts.push(env.DB.prepare('DELETE FROM log WHERE id <= (SELECT COALESCE(MAX(id),0) - 100 FROM log)'));
     if (stmts.length) await env.DB.batch(stmts);
   },
 };
+
+// The VAPID private key secret is a JWK (has x, y, d). web-push-browser
+// wants a CryptoKeyPair, so import the private key for signing and
+// rebuild the public half from the JWK's point coordinates — same key
+// pair as the day it was generated, nothing rotates.
+let vapidKeysPromise = null;
+function vapidKeysFromJWK(jwkString) {
+  if (!vapidKeysPromise) {
+    vapidKeysPromise = (async () => {
+      const jwk = JSON.parse(jwkString);
+      const privateKey = await crypto.subtle.importKey(
+        'jwk', jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+      const { kty, crv, x, y } = jwk;
+      const publicKey = await crypto.subtle.importKey(
+        'jwk', { kty, crv, x, y }, { name: 'ECDSA', namedCurve: 'P-256' }, true, ['verify']);
+      return { privateKey, publicKey };
+    })();
+  }
+  return vapidKeysPromise;
+}
+
+// Counts + recent delivery log, no reminder text. Public but harmless —
+// it exists so "no notification arrived" is debuggable from outside.
+async function handleStatus(env) {
+  const [subs, pending, next, recent] = await env.DB.batch([
+    env.DB.prepare('SELECT COUNT(*) AS n FROM subscriptions'),
+    env.DB.prepare('SELECT COUNT(*) AS n FROM pending'),
+    env.DB.prepare('SELECT MIN(fire_at) AS t FROM pending'),
+    env.DB.prepare('SELECT at, kind, detail FROM log ORDER BY id DESC LIMIT 20'),
+  ]);
+  return json({
+    now: Date.now(),
+    subscriptions: subs.results[0].n,
+    pending: pending.results[0].n,
+    nextFireAt: next.results[0].t,
+    recent: recent.results,
+  });
+}
 
 async function handleSubscribe(request, env) {
   const { deviceId, subscription } = await request.json();

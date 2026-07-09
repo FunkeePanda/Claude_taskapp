@@ -9,10 +9,10 @@
     "deploy": "wrangler deploy",
     "db:init": "wrangler d1 execute focus-push-db --file=schema.sql"
   },
-  "dependencies": {
-    "@pushforge/builder": "^2.0.5"
-  },
   "devDependencies": {
     "wrangler": "^4.0.0"
+  },
+  "dependencies": {
+    "web-push-browser": "^1.4.2"
   }
 }
