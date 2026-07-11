@@ -52,15 +52,16 @@ export const THEMES = [
     },
   },
   {
+    // shell-white paper, not glare-white: warm aged-paper cards with ink-blue accents
     id: 'paper', family: 'focus', name: 'Paper & Ink', dark: false,
     tokens: {
-      bg: '#eef0f3', bgElev: '#ffffff', bgElev2: '#f2f5f8',
+      bg: '#f0ead8', bgElev: '#fdf6e3', bgElev2: '#f5efdc',
       text: '#1f2933', textDim: '#52616f', textFaint: '#7c8896',
       accent: '#33557e', accentBright: '#466992', accentDeep: '#24405e',
       accentSoft: 'rgba(51, 85, 126, 0.14)',
       good: '#17835a', warn: '#a06508', danger: '#c23f33',
-      border: 'rgba(16, 32, 48, 0.12)', treeLine: 'rgba(16, 32, 48, 0.20)',
-      shadow: '0 8px 24px rgba(30, 40, 60, 0.12)', accentShadow: 'rgba(51, 85, 126, 0.35)',
+      border: 'rgba(60, 48, 16, 0.14)', treeLine: 'rgba(60, 48, 16, 0.24)',
+      shadow: '0 8px 24px rgba(70, 55, 25, 0.12)', accentShadow: 'rgba(51, 85, 126, 0.35)',
     },
   },
   {
@@ -76,15 +77,16 @@ export const THEMES = [
     },
   },
   {
+    // shell-white with a whisper of green — no stark white cards
     id: 'eucalyptus', family: 'calm', name: 'Eucalyptus', dark: false,
     tokens: {
-      bg: '#edf2ee', bgElev: '#ffffff', bgElev2: '#f2f7f3',
+      bg: '#ebeddb', bgElev: '#fbf7e6', bgElev2: '#f2f1de',
       text: '#233029', textDim: '#54675c', textFaint: '#7e8f84',
       accent: '#3d7a5c', accentBright: '#548f70', accentDeep: '#2b5741',
       accentSoft: 'rgba(61, 122, 92, 0.14)',
       good: '#17835a', warn: '#a06508', danger: '#c23f33',
-      border: 'rgba(25, 50, 38, 0.12)', treeLine: 'rgba(25, 50, 38, 0.20)',
-      shadow: '0 8px 24px rgba(30, 55, 42, 0.12)', accentShadow: 'rgba(61, 122, 92, 0.35)',
+      border: 'rgba(45, 55, 25, 0.14)', treeLine: 'rgba(45, 55, 25, 0.24)',
+      shadow: '0 8px 24px rgba(40, 55, 30, 0.12)', accentShadow: 'rgba(61, 122, 92, 0.35)',
     },
   },
   {
@@ -100,15 +102,16 @@ export const THEMES = [
     },
   },
   {
+    // manila-leaning cream, deepened so cards never read as plain white
     id: 'sunrise', family: 'energy', name: 'Sunrise', dark: false,
     tokens: {
-      bg: '#f6f0e6', bgElev: '#fffdf8', bgElev2: '#f7f1e7',
+      bg: '#f1e7cf', bgElev: '#fcf4df', bgElev2: '#f4ebd3',
       text: '#33291d', textDim: '#6b5d49', textFaint: '#93866f',
       accent: '#b35317', accentBright: '#cd6e33', accentDeep: '#833c0f',
       accentSoft: 'rgba(179, 83, 23, 0.14)',
       good: '#17835a', warn: '#a06508', danger: '#c23f33',
-      border: 'rgba(80, 60, 30, 0.14)', treeLine: 'rgba(80, 60, 30, 0.22)',
-      shadow: '0 8px 24px rgba(90, 65, 30, 0.12)', accentShadow: 'rgba(179, 83, 23, 0.35)',
+      border: 'rgba(85, 62, 25, 0.15)', treeLine: 'rgba(85, 62, 25, 0.24)',
+      shadow: '0 8px 24px rgba(95, 70, 30, 0.12)', accentShadow: 'rgba(179, 83, 23, 0.35)',
     },
   },
 ];
