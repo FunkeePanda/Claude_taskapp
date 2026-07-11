@@ -63,6 +63,26 @@ export function occurrencesFor(task, now, settings = {}) {
   return out;
 }
 
+// One-shot notification at the task's chosen due moment. Fires exactly
+// when the user picked — deliberately NOT filtered by quiet hours, since
+// the time was chosen explicitly. Date-only (all-day) tasks notify at
+// 9:00 that morning instead of the internal 23:59 end-of-day stamp.
+const DUE_SLOT = 70; // nags use slots 0..23, sessions 80..99
+
+export function dueNotification(task, now) {
+  if (task.due == null || task.completedAt) return [];
+  let ts = task.due;
+  let body = 'Due now';
+  if (task.allDay) {
+    const d = new Date(task.due);
+    d.setHours(9, 0, 0, 0);
+    ts = d.getTime();
+    body = 'Due today';
+  }
+  if (ts <= now) return [];
+  return [{ nid: nidFor(task.id, DUE_SLOT), ts, taskId: task.id, title: task.title, body }];
+}
+
 // Global plan across all tasks, earliest-first, capped. Interval nags
 // are skipped for tasks whose running session asks for silence.
 export function planAll(tasks, now, settings = {}) {
@@ -201,13 +221,21 @@ export async function initNotifications(onDataChanged) {
   });
 
   await LocalNotifications.registerActionTypes({
-    types: [{
-      id: 'nag',
-      actions: [
-        { id: 'done', title: '✓ Done' },
-        { id: 'snooze', title: 'Snooze 1h' },
-      ],
-    }],
+    types: [
+      {
+        id: 'nag',
+        actions: [
+          { id: 'done', title: '✓ Done' },
+          { id: 'snooze', title: 'Snooze 1h' },
+        ],
+      },
+      {
+        // due-time alert: snooze would need an interval reminder to hang
+        // its startAt on, so it only offers Done
+        id: 'due',
+        actions: [{ id: 'done', title: '✓ Done' }],
+      },
+    ],
   });
 
   await LocalNotifications.addListener('localNotificationActionPerformed', async (event) => {
@@ -285,6 +313,20 @@ async function reconcileNative(now) {
       };
     });
 
+    const dues = allTasks()
+      .flatMap(t => dueNotification(t, now))
+      .map(o => ({
+        id: o.nid,
+        channelId: 'reminders',
+        title: o.title,
+        body: o.body,
+        schedule: { at: new Date(o.ts), allowWhileIdle: true },
+        actionTypeId: 'due',
+        extra: { taskId: o.taskId },
+        smallIcon: 'ic_stat_notify',
+        autoCancel: true,
+      }));
+
     const sessions = allTasks()
       .filter(t => sessionActive(t, now))
       .flatMap(t => sessionNotifications(t, now))
@@ -299,7 +341,7 @@ async function reconcileNative(now) {
         autoCancel: true,
       }));
 
-    const all = [...nags, ...sessions];
+    const all = [...nags, ...dues, ...sessions];
     if (all.length) await LocalNotifications.schedule({ notifications: all });
   } catch { /* transient plugin error — next reconcile() retries */ }
 }
@@ -321,10 +363,14 @@ async function reconcileWebPush(now) {
     };
   });
 
+  const dues = allTasks()
+    .flatMap(t => dueNotification(t, now))
+    .map(o => ({ nid: o.nid, ts: o.ts, title: o.title, body: o.body }));
+
   const sessions = allTasks()
     .filter(t => sessionActive(t, now))
     .flatMap(t => sessionNotifications(t, now))
     .map(o => ({ nid: o.nid, ts: o.ts, title: o.title, body: o.body }));
 
-  await syncWebPush([...nags, ...sessions]);
+  await syncWebPush([...nags, ...dues, ...sessions]);
 }

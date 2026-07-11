@@ -97,3 +97,46 @@ test('slots stay unique per task', () => {
   const nids = new Set(occ.map(o => o.nid));
   assert.equal(nids.size, occ.length);
 });
+
+// ---------- due-time notifications ----------
+
+import { dueNotification } from '../www/js/reminders.js';
+
+test('timed due → one notification at the exact chosen moment', () => {
+  const due = NOW + 3 * HOUR;
+  const t = task({ due, allDay: false, reminder: null });
+  const out = dueNotification(t, NOW);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].ts, due);
+  assert.equal(out[0].body, 'Due now');
+  assert.equal(taskIdFromNid(out[0].nid), t.id);
+});
+
+test('all-day due → notifies at 9:00 that morning, not 23:59', () => {
+  const endOfDay = new Date(2026, 6, 8, 23, 59, 0).getTime();
+  const t = task({ due: endOfDay, allDay: true, reminder: null });
+  const out = dueNotification(t, NOW);
+  assert.equal(out.length, 1);
+  assert.equal(new Date(out[0].ts).getHours(), 9);
+  assert.equal(new Date(out[0].ts).getDate(), 8);
+  assert.equal(out[0].body, 'Due today');
+});
+
+test('past, completed, or missing due → nothing', () => {
+  assert.deepEqual(dueNotification(task({ due: NOW - MIN, allDay: false }), NOW), []);
+  assert.deepEqual(dueNotification(task({ due: NOW + HOUR, allDay: false, completedAt: NOW }), NOW), []);
+  assert.deepEqual(dueNotification(task({ due: null }), NOW), []);
+});
+
+test('all-day due today with 9:00 already past → nothing (not a 23:59 surprise)', () => {
+  const endOfToday = new Date(2026, 6, 6, 23, 59, 0).getTime(); // NOW is 10:00
+  assert.deepEqual(dueNotification(task({ due: endOfToday, allDay: true }), NOW), []);
+});
+
+test('due slot never collides with nag or session nids', () => {
+  const t = task({ due: NOW + HOUR, allDay: false, reminder: { intervalMin: 30, startAt: null } });
+  const dueNid = dueNotification(t, NOW)[0].nid;
+  const nagNids = occurrencesFor(t, NOW).map(o => o.nid);
+  assert.ok(!nagNids.includes(dueNid));
+  assert.ok(dueNid % 100 < 80); // below the session slot range
+});
