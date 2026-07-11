@@ -110,6 +110,28 @@ if (!isNative) {
   });
 }
 
+// The APK can't hot-update, so at least SAY when a newer build exists:
+// compare this install's versionCode (the APK workflow's run number)
+// against the rolling GitHub release. Once per launch, quiet on failure.
+if (isNative) {
+  (async () => {
+    try {
+      const info = await App.getInfo();
+      const resp = await fetch('https://api.github.com/repos/FunkeePanda/Claude_taskapp/releases/latest');
+      if (!resp.ok) return;
+      const rel = await resp.json();
+      const m = /1\.0\.(\d+)/.exec(rel.name || '');
+      if (m && parseInt(m[1], 10) > parseInt(info.build, 10)) {
+        toast(`Update available: v1.0.${m[1]} — you're on v${info.version}`, {
+          actionLabel: 'Get it',
+          onAction: () => window.open('https://github.com/FunkeePanda/Claude_taskapp/releases/latest', '_blank'),
+          duration: 8000,
+        });
+      }
+    } catch { /* offline or rate-limited — try next launch */ }
+  })();
+}
+
 // iOS has no local background alarms — Web Push needs a service worker
 // registered up front so a subscription can be created later.
 if (!isNative && webPushSupported) registerServiceWorker();
