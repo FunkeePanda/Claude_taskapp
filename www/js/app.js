@@ -88,6 +88,28 @@ setInterval(() => {
 // Reconcile on every resume: refills the rolling reminder window.
 App.addListener('resume', () => reconcile());
 
+// iOS home-screen apps love to keep running stale code for days. Poll the
+// deploy's version stamp on launch and every resume; when a new build is
+// live, reload once so fixes actually reach the phone. (Web only — the
+// Android app ships its own bundled copy.)
+let runningBuild = null;
+async function checkForNewBuild() {
+  try {
+    const resp = await fetch('version.json', { cache: 'no-store' });
+    if (!resp.ok) return; // local dev / no stamp — nothing to compare
+    const { build } = await resp.json();
+    if (!build) return;
+    if (runningBuild == null) runningBuild = build;
+    else if (build !== runningBuild) location.reload();
+  } catch { /* offline — try again next resume */ }
+}
+if (!isNative) {
+  checkForNewBuild();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') checkForNewBuild();
+  });
+}
+
 // iOS has no local background alarms — Web Push needs a service worker
 // registered up front so a subscription can be created later.
 if (!isNative && webPushSupported) registerServiceWorker();

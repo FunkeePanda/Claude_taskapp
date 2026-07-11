@@ -222,6 +222,12 @@ async function handleSync(request, env) {
       'INSERT INTO pending (device_id, nid, fire_at, title, body) VALUES (?1, ?2, ?3, ?4, ?5)'
     ).bind(deviceId, n.nid, n.ts, n.title, n.body || ''));
   }
+  // visible in GET /status: which device synced, how many rows, and how
+  // many are one-shot due alerts (slot 70) — makes "no notification
+  // arrived" diagnosable without touching the phone
+  const dueCount = list.filter(n => n.nid != null && n.nid % 100 === 70).length;
+  stmts.push(env.DB.prepare('INSERT INTO log (at, kind, detail) VALUES (?1, ?2, ?3)')
+    .bind(Date.now(), 'sync', `dev=${String(deviceId).slice(0, 8)} rows=${list.length} due=${dueCount}`));
   await env.DB.batch(stmts);
 
   return json({ ok: true, count: list.length });
