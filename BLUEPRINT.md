@@ -11,6 +11,51 @@ non-programmer owner who runs it on Android and shares it with an iPhone user.
 
 ---
 
+## ⚠️ How the owner builds and tests — READ THIS FIRST
+
+**The owner works entirely from their phone. There is no computer in this
+workflow. Ever.** This shapes everything you do:
+
+- **Never** ask the owner to run a command, open a terminal, install a
+  toolchain, use an IDE, or visit `localhost`. If a step needs any of that,
+  it's YOUR step, done in your environment or in CI.
+- **You write all code and push it; GitHub Actions builds everything.**
+  Git push → CI → live deploy/release is the ONLY build path. Set the
+  pipelines up first (§13 phase 1) because nothing can be tested without
+  them.
+- **Android testing loop (the owner's own phone):** every push produces a
+  **signed APK attached to a rolling GitHub release with a stable download
+  URL**. The owner opens that release page in their phone browser, downloads
+  `focus.apk`, and installs it right over the previous version (sideload —
+  their tasks survive because the signing key never changes). This is how
+  they test every Android change. Keep the release name showing the build
+  number so they can confirm what they're on (also show it in Settings →
+  About). Expect and handle sideload friction: "install unknown apps"
+  permission per-browser, Chrome's "harmful file" warning needing "Download
+  anyway", and stale/corrupt downloads causing "App not installed" (fix:
+  delete old focus.apk files, re-download).
+- **iOS testing loop (a friend's iPhone):** the same `www/` folder deploys to
+  a **public GitHub Pages URL**. The iPhone user opens it in Safari →
+  **Share → Add to Home Screen** — that installed icon IS the iOS app, and
+  it's the only context where iOS allows Web Push. The owner shares that one
+  URL; after updates nobody re-installs anything (the app self-reloads new
+  builds, §11). Push notifications additionally need the Cloudflare Worker
+  (§10) deployed and its URL + VAPID public key wired into the client.
+- **Anything only the owner can do must be phone-sized.** Account setup
+  (e.g. creating the Cloudflare account, adding GitHub repo secrets) happens
+  in their phone browser — give exact tap-by-tap paths, one step at a time,
+  and have them paste values into the repo's Settings → Secrets page. You
+  generate anything generatable (keys, ids) yourself and hand them the value.
+- **Verify before you hand over.** The owner is the final on-device tester,
+  but their time is expensive: before saying "try it," you must have run the
+  unit tests, driven the UI headlessly (Playwright against a static server of
+  `www/`), curled the live Pages/Worker URLs to confirm the deploy actually
+  landed, and checked CI is green. On-device notification delivery is the
+  ONE thing you can't verify — for iOS you can get close with the Worker's
+  `/status` log; for Android, tell the owner exactly what to do and what
+  they should see ("set a task due 5 minutes out, close the app, watch the
+  lock screen").
+
 ## 1. Product in one paragraph
 
 A fast, beautiful, offline-first task app for two phones: a **signed Android
@@ -463,8 +508,10 @@ only path, and `PushManager` exists **only after Add-to-Home-Screen**
 
 They communicate by **voice-to-text** — expect typos and stream-of-thought;
 read generously and restate what you understood before building. Give direct
-answers first, detail after. They test on a real Android phone; the iPhone
-user is a friend they share the app with. Ship in small verified rounds with
-screenshots. **Do not restyle the app or "improve" the design — match this
-blueprint.** When something doesn't work on-device, check client staleness
-and the worker `/status` log before touching code.
+answers first, detail after. Everything happens from their phone (see the
+⚠️ section at the top — reread it whenever you're about to ask them to do
+something). They test on a real Android phone via the release APK; the
+iPhone user is a friend they share the Pages URL with. Ship in small
+verified rounds with screenshots. **Do not restyle the app or "improve" the
+design — match this blueprint.** When something doesn't work on-device,
+check client staleness and the worker `/status` log before touching code.
