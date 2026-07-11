@@ -240,9 +240,29 @@ function optionToolbar(task) {
     </div>`;
 }
 
+// Tap binding that survives iOS layout shifts: when the keyboard dismisses
+// mid-tap the sheet moves between touchstart and click, and Safari drops
+// the click entirely. touchend still fires on the element the finger went
+// down on, so handle taps there (and preventDefault so no ghost click
+// double-toggles); plain click covers mouse/desktop.
+function bindTap(el, handler) {
+  let sx = 0, sy = 0, t0 = 0;
+  el.addEventListener('touchstart', (e) => {
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY; t0 = Date.now();
+  }, { passive: true });
+  el.addEventListener('touchend', (e) => {
+    const t = e.changedTouches[0];
+    if (Math.abs(t.clientX - sx) > 12 || Math.abs(t.clientY - sy) > 12) return; // a drag, not a tap
+    if (Date.now() - t0 > 600) return; // a hold, not a tap
+    e.preventDefault();
+    handler(e);
+  });
+  el.addEventListener('click', handler);
+}
+
 function bindOptionToolbar(sheet, cleared, task) {
   // accordion: one open panel at a time
-  sheet.querySelector('#opt-row').addEventListener('click', (e) => {
+  bindTap(sheet.querySelector('#opt-row'), (e) => {
     const chip = e.target.closest('.opt-chip');
     if (!chip) return;
     const id = chip.dataset.panel;
@@ -282,11 +302,19 @@ function bindOptionToolbar(sheet, cleared, task) {
     updateChipSummaries(sheet);
   });
 
-  // date/time
+  // date/time: a tap should reliably open the native picker (iOS often
+  // just focuses without opening), the focus highlight stays on while
+  // the picker is up, and a made selection releases it
   for (const id of ['f-date', 'f-time']) {
-    sheet.querySelector('#' + id)?.addEventListener('change', () => {
+    const input = sheet.querySelector('#' + id);
+    if (!input) continue;
+    input.addEventListener('click', () => {
+      try { input.showPicker?.(); } catch { /* older browsers: focus alone opens it */ }
+    });
+    input.addEventListener('change', () => {
       cleared.add('due'); cleared.add('time');
       updateChipSummaries(sheet);
+      input.blur(); // selection made — release the highlight
     });
   }
 

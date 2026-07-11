@@ -47,13 +47,14 @@ export function openSheet(html) {
   sheet.querySelector('.sheet-close').addEventListener('click', closeSheet);
 
   // swipe-down to dismiss (only when the sheet isn't scrolled). A touch
-  // that starts on a control with its own gesture — the time wheels,
-  // text/date inputs — belongs to that control alone and never drags
-  // the sheet.
+  // that starts on ANY control — buttons, chips, wheels, inputs — belongs
+  // to that control alone and never drags the sheet: on iOS even a 2px
+  // jitter during a tap would otherwise nudge the sheet and make Safari
+  // swallow the tap's click.
   let startY = null, dy = 0;
   sheet.addEventListener('touchstart', (e) => {
     if (sheet.scrollTop > 0) return;
-    if (e.target.closest('.opt-panel, .wheel-row, .wheel, input, textarea, select, .switch, .segment')) return;
+    if (e.target.closest('.opt-panel, .opt-row, .wheel-row, .wheel, input, textarea, select, button, .switch, .segment')) return;
     startY = e.touches[0].clientY;
     dy = 0;
   }, { passive: true });

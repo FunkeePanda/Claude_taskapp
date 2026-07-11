@@ -1,5 +1,6 @@
 /* ---------- Theme tokens ---------- */
 :root {
+  color-scheme: dark; /* applyTheme() overrides per theme (light variants) */
   --bg: #1b2026;
   --bg-elev: #242b33;
   --bg-elev-2: #2e3742;
@@ -26,6 +27,8 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { -webkit-text-size-adjust: 100%; }
+/* kill iOS's double-tap-zoom wait so buttons respond to the first tap */
+button, .chip, .swatch { touch-action: manipulation; }
 
 body {
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -233,10 +236,16 @@ h1.screen-title { font-size: 1.65rem; font-weight: 700; letter-spacing: -0.02em;
   padding: 12px 14px; outline: none;
   transition: border-color 0.2s ease;
 }
-.input:focus { border-color: var(--accent); }
+/* the highlight lands on the first tap and stays until the control is
+   left (blur) or a selection is made */
+.input:focus, .input:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
 textarea.input { resize: vertical; min-height: 64px; }
+/* date/time inputs follow the active theme's scheme (set on :root) */
 input[type='datetime-local'].input, input[type='date'].input, input[type='time'].input {
-  color-scheme: dark;
+  min-height: 46px; /* iOS collapses empty date inputs to a sliver */
 }
 
 /* ---------- Bottom sheet ---------- */
