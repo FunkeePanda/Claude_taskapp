@@ -13,6 +13,7 @@ function defaults() {
       quietStart: '22:00',
       quietEnd: '08:00',
       focusLimit: 5,
+      theme: 'ember',
     },
     meta: { nextId: 1 },
   };

@@ -2,9 +2,10 @@
 
 import { App, isNative } from './native.js';
 import { onChange } from './store.js';
+import { settings } from './model.js';
+import { applyTheme } from './themes.js';
 import { initNotifications, reconcile } from './reminders.js';
 import { webPushSupported, registerServiceWorker } from './webpush.js';
-import { renderToday } from './ui/today.js';
 import { renderTasks } from './ui/tasks.js';
 import { renderCalendar } from './ui/calendar.js';
 import { renderSettings } from './ui/settings.js';
@@ -15,11 +16,11 @@ const view = document.getElementById('view');
 const tabbar = document.getElementById('tabbar');
 const fab = document.getElementById('fab');
 
-const routes = { today: renderToday, tasks: renderTasks, calendar: renderCalendar, settings: renderSettings };
+const routes = { tasks: renderTasks, calendar: renderCalendar, settings: renderSettings };
 
 function currentRoute() {
   const r = location.hash.replace('#', '');
-  return routes[r] ? r : 'today';
+  return routes[r] ? r : 'tasks'; // legacy '#today' bookmarks land here too
 }
 
 // Re-render the current view WITHOUT the app feeling like it reset:
@@ -90,6 +91,8 @@ App.addListener('resume', () => reconcile());
 // iOS has no local background alarms — Web Push needs a service worker
 // registered up front so a subscription can be created later.
 if (!isNative && webPushSupported) registerServiceWorker();
+
+applyTheme(settings().theme);
 
 reconcile();
 

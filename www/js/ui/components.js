@@ -171,20 +171,24 @@ export function taskChipsHtml(task, now = Date.now()) {
   } else if (task.reminder) {
     chips.push(`<span class="chip nag">every ${esc(fmtInterval(task.reminder.intervalMin))}</span>`);
   }
-  for (const t of task.tags) chips.push(`<span class="chip tag">#${esc(t)}</span>`);
   return chips.join('');
 }
 
 // ---------- Task card ----------
 // onComplete(task, done, flippedIds) runs after the completion animation;
-// onOpen(task) on tap. Subtask extras: parentLabel (context line above the
-// title), progress ({done,total} chip), hasChildren/collapsed/onToggleCollapse
+// onOpen(task) on tap; onDelete(task) when the swipe-revealed trash is
+// tapped. Subtask extras: parentLabel (context line above the title),
+// progress ({done,total} chip), hasChildren/collapsed/onToggleCollapse
 // (chevron), depth (tree indent).
+
+// only one card's trash reveal open at a time, app-wide
+let closeOpenReveal = null;
+
 export function taskCard(task, {
   onComplete, onOpen, index = 0, now = Date.now(),
   parentLabel = null, progress = null, hasChildren = false,
   collapsed = false, onToggleCollapse = null, depth = 0,
-  onAddSubtask = null, onArchived = null, onSession = null,
+  onAddSubtask = null, onDelete = null, onSession = null,
 } = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'collapse-wrap';
@@ -192,7 +196,10 @@ export function taskCard(task, {
   const progressChip = progress && progress.total
     ? `<span class="chip progress">${progress.done}/${progress.total}</span>` : '';
   wrap.innerHTML = `
-    <div>
+    <div class="swipe-stage">
+      <button class="trash-btn" aria-label="Delete task" tabindex="-1">
+        <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6.5 7l.8 12a2 2 0 0 0 2 1.9h5.4a2 2 0 0 0 2-1.9l.8-12M10 11v5.5M14 11v5.5" stroke="currentColor" stroke-width="1.9" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
       <div class="task-card ${task.completedAt ? 'done' : ''}" data-id="${task.id}">
         <button class="check prio-${task.priority} ${task.completedAt ? 'filled' : ''}" aria-label="Complete">
           <span class="fill"></span>
@@ -243,18 +250,51 @@ export function taskCard(task, {
     completeWithAnimation(task, wrap, check, onComplete);
   });
 
+  // ---- swipe-left trash reveal ----
+  const stage = wrap.querySelector('.swipe-stage');
+  const trash = wrap.querySelector('.trash-btn');
+  const PARK = 84;       // px the card parks at, matching the button width
+  let revealed = false;
+
+  const closeReveal = () => {
+    revealed = false;
+    stage.classList.remove('revealed');
+    card.style.transform = '';
+    trash.style.opacity = '';
+    if (closeOpenReveal === closeReveal) closeOpenReveal = null;
+  };
+  const openReveal = () => {
+    if (closeOpenReveal && closeOpenReveal !== closeReveal) closeOpenReveal();
+    revealed = true;
+    stage.classList.add('revealed');
+    card.style.transform = `translateX(-${PARK}px)`;
+    trash.style.opacity = '';
+    closeOpenReveal = closeReveal;
+  };
+
+  trash.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeReveal();
+    onDelete?.(task);
+  });
+
   let armed = false;
+  let suppressOpen = false; // tap that tucked a parked card back shouldn't open the editor
   card.addEventListener('click', () => {
     if (armed) { armed = false; return; } // the hold gesture consumed this tap
+    if (suppressOpen) { suppressOpen = false; return; }
+    if (revealed) { closeReveal(); return; } // mouse click on a parked card tucks it back
     onOpen?.(task);
   });
 
-  // swipe right → add a subtask; swipe left on a completed task → move
-  // it to Done. Hold half a second → haptic tick arms the card; THEN
-  // swiping down while still holding toggles the subtasks. Releasing
-  // without swiping does nothing (reserved for future hold options).
+  // swipe right → add a subtask; swipe left → the card parks to the left
+  // with a delete button revealed (works in every section, Done included).
+  // Hold half a second → haptic tick arms the card; THEN swiping down
+  // while still holding toggles the subtasks.
   let startX = null, startY = null, dx = 0, moved = false, lpTimer = null, holdToggled = false;
   card.addEventListener('touchstart', (e) => {
+    // starting a touch anywhere else closes the one open reveal
+    if (closeOpenReveal && closeOpenReveal !== closeReveal) closeOpenReveal();
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
     dx = 0;
@@ -285,18 +325,30 @@ export function taskCard(task, {
       moved = true;
       clearTimeout(lpTimer);
     }
-    card.style.transform = `translateX(${Math.max(-120, Math.min(dx, 120))}px)`;
+    card.classList.add('dragging'); // raw finger-follow, no transition
+    const base = revealed ? -PARK : 0;
+    const x = Math.max(-120, Math.min(base + dx, 120));
+    card.style.transform = `translateX(${x}px)`;
+    // the trash fades in as the card uncovers it
+    if (x < 0) trash.style.opacity = Math.min(1, -x / PARK).toFixed(2);
   }, { passive: true });
   card.addEventListener('touchend', () => {
     clearTimeout(lpTimer);
-    card.style.transform = '';
+    card.classList.remove('dragging'); // settle with the spring transition
     if (!armed) {
-      if (dx > 90) {
+      const base = revealed ? -PARK : 0;
+      const x = base + dx;
+      if (dx > 90 && !revealed) {
+        card.style.transform = '';
         onAddSubtask?.(task);
-      } else if (dx < -90 && task.completedAt && !task.archived) {
-        setArchived(task.id, true);
-        onArchived?.(task);
+      } else if (x < -60 && moved) {
+        openReveal();
+      } else {
+        if (revealed && !moved) suppressOpen = true; // tap on parked card: close only
+        closeReveal();
       }
+    } else {
+      card.style.transform = revealed ? `translateX(-${PARK}px)` : '';
     }
     startX = null;
   });
@@ -306,10 +358,13 @@ export function taskCard(task, {
 
 const REDUCED_MOTION = typeof matchMedia !== 'undefined'
   && matchMedia('(prefers-reduced-motion: reduce)').matches;
-const BUBBLE_COLORS = ['#a63446', '#c4576a', '#7c2434'];
 
 function spawnBubbles(check, dir) {
   if (REDUCED_MOTION) return;
+  // bubbles wear the active theme's accent triplet
+  const css = getComputedStyle(document.documentElement);
+  const BUBBLE_COLORS = ['--accent', '--accent-bright', '--accent-deep']
+    .map(v => css.getPropertyValue(v).trim() || '#a63446');
   const n = 12; // same count in and out so the two directions mirror
   for (let i = 0; i < n; i++) {
     const b = document.createElement('span');
@@ -327,27 +382,39 @@ function spawnBubbles(check, dir) {
   }
 }
 
-// Complete: bubbles converge → maroon fill grows from center → white check
-// pops → card collapses. Uncheck: check out → fill shrinks → bubbles burst.
+// Complete: bubbles converge → fill grows from center → white check pops →
+// the same fill ripples down through every visible subtask check → the
+// whole subtree moves to Done. Uncheck: check out → fill shrinks → bubbles.
 function completeWithAnimation(task, wrap, check, onComplete) {
   if (check.dataset.busy) return;
   check.dataset.busy = '1';
   const card = wrap.querySelector('.task-card');
   const completing = !task.completedAt;
 
+  const finishComplete = () => {
+    delete check.dataset.busy;
+    const flipped = completeWithDescendants(task.id);
+    setArchived(task.id, true); // completed tasks move to Done on their own
+    onComplete?.(task, true, flipped);
+  };
+
   if (REDUCED_MOTION) {
     check.classList.toggle('filled', completing);
     card.classList.toggle('done', completing);
-    const flipped = completing ? completeWithDescendants(task.id) : [task.id];
-    if (!completing) setCompleted(task.id, false);
+    if (completing) { finishComplete(); return; }
+    setCompleted(task.id, false);
     delete check.dataset.busy;
-    onComplete?.(task, completing, flipped);
+    onComplete?.(task, false, [task.id]);
     return;
   }
 
   if (completing) {
-    // the card stays where it is and just greys out — moving it to Done
-    // is the user's call (swipe left)
+    // descendants ripple AFTER the parent's own fill lands; the rerender
+    // (and the move to Done) waits for the last one so nothing snaps
+    const node = wrap.closest('.tree-node');
+    const descChecks = node ? [...node.querySelectorAll('.subtree .check:not(.filled)')] : [];
+    const STEP = 90;
+
     spawnBubbles(check, 'in');
     setTimeout(() => check.classList.add('filling'), 160);
     setTimeout(() => {
@@ -355,12 +422,18 @@ function completeWithAnimation(task, wrap, check, onComplete) {
       check.classList.add('filled', 'checkpop');
       card.classList.add('done');
     }, 400);
+    descChecks.forEach((c, i) => {
+      setTimeout(() => c.classList.add('filling'), 400 + (i + 1) * STEP);
+      setTimeout(() => {
+        c.classList.remove('filling');
+        c.classList.add('filled', 'checkpop');
+        c.closest('.task-card')?.classList.add('done');
+      }, 640 + (i + 1) * STEP);
+    });
     setTimeout(() => {
       check.classList.remove('checkpop');
-      delete check.dataset.busy;
-      const flipped = completeWithDescendants(task.id);
-      onComplete?.(task, true, flipped);
-    }, 680);
+      finishComplete();
+    }, 680 + descChecks.length * STEP + (descChecks.length ? 260 : 0));
   } else {
     check.classList.add('checkout');
     card.classList.remove('done');

@@ -1,9 +1,9 @@
 // Calendar view: month grid with dots on days that have open tasks;
 // tapping a day lists its tasks below.
 
-import { allTasks, setCompleted, getTask } from '../model.js';
+import { allTasks, setCompleted, setArchived, getTask, deleteTask, descendantsOf } from '../model.js';
 import { monthGrid, tasksByDay, sameDay } from '../dates.js';
-import { taskCard, toast } from './components.js';
+import { taskCard, toast, confirmSheet } from './components.js';
 import { openEditSheet, openAddSheet } from './editor.js';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -98,14 +98,24 @@ export function renderCalendar(view, rerender) {
       if (done) {
         toast('Done', {
           actionLabel: 'Undo',
-          onAction: () => { flipped.forEach(id => setCompleted(id, false)); rerender(); },
+          onAction: () => {
+            flipped.forEach(id => setCompleted(id, false));
+            setArchived(task.id, false); // auto-archive took the whole subtree
+            rerender();
+          },
         });
       }
       rerender();
     },
     onOpen: (task) => openEditSheet(task.id, rerender),
     onAddSubtask: (task) => openAddSheet(rerender, { parentId: task.id }),
-    onArchived: () => { toast('Moved to Done'); rerender(); },
+    onDelete: async (task) => {
+      const n = descendantsOf(task.id).length;
+      if (n && !(await confirmSheet(`Delete “${task.title.slice(0, 26)}” and ${n} subtask${n > 1 ? 's' : ''}?`))) return;
+      deleteTask(task.id);
+      toast('Deleted');
+      rerender();
+    },
     onSession: () => rerender(),
   })));
 }

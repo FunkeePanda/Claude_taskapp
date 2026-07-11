@@ -5,6 +5,7 @@ import { settings, updateSettings } from '../model.js';
 import { exportJSON, importJSON } from '../store.js';
 import { ensurePermission, permissionStatus, reconcile } from '../reminders.js';
 import { webPushSupported, sendTestPush } from '../webpush.js';
+import { FAMILIES, THEMES, getTheme, applyTheme } from '../themes.js';
 import { toast, confirmSheet, esc } from './components.js';
 
 // iPadOS reports a desktop Mac UA but exposes touch points — catch both.
@@ -51,10 +52,24 @@ export async function renderSettings(view, rerender) {
       </div>` : ''}
     </div>
 
+    <div class="section-label">Appearance</div>
+    <div class="card">
+      <div class="row" style="border-bottom:none; padding-bottom:8px">
+        <div>
+          <div class="label">Theme</div>
+          <div class="sub" id="theme-blurb">${esc(FAMILIES.find(f => f.id === getTheme(s.theme).family)?.blurb || '')}</div>
+        </div>
+      </div>
+      <div class="task-meta" id="theme-families" style="padding:0 2px 10px">
+        ${FAMILIES.map(f => `<button class="chip picker-chip ${getTheme(s.theme).family === f.id ? 'chip-active' : ''}" data-family="${f.id}">${esc(f.name)}</button>`).join('')}
+      </div>
+      <div id="theme-variants" style="padding:0 2px 12px"></div>
+    </div>
+
     <div class="section-label">Focus</div>
     <div class="card">
       <div class="row">
-        <div><div class="label">Focus list size</div><div class="sub">Max tasks Today picks for you</div></div>
+        <div><div class="label">Focus list size</div><div class="sub">Max tasks “Your focus” picks for you</div></div>
         <div class="segment" id="focus-limit" style="width:150px">
           ${[3, 5, 7].map(n => `<button data-v="${n}" ${s.focusLimit === n ? 'class="active"' : ''}>${n}</button>`).join('')}
         </div>
@@ -133,6 +148,41 @@ export async function renderSettings(view, rerender) {
       toast('Quiet hours updated');
     });
   }
+
+  // theme picker: family chips reveal that family's variants, each chip
+  // painted in its own palette so the chip IS the preview; tapping a
+  // variant restyles the whole app live and saves the choice
+  let shownFamily = getTheme(s.theme).family;
+  const famRow = view.querySelector('#theme-families');
+  const varRow = view.querySelector('#theme-variants');
+  const blurbEl = view.querySelector('#theme-blurb');
+  const renderVariants = () => {
+    const current = settings().theme;
+    blurbEl.textContent = FAMILIES.find(f => f.id === shownFamily)?.blurb || '';
+    famRow.querySelectorAll('[data-family]').forEach(b =>
+      b.classList.toggle('chip-active', b.dataset.family === shownFamily));
+    varRow.innerHTML = THEMES.filter(t => t.family === shownFamily).map(t => `
+      <button class="theme-chip ${t.id === current ? 'sel' : ''}" data-theme="${t.id}"
+        style="--tc-a:${t.tokens.accent}; background:${t.tokens.bgElev}; color:${t.tokens.text}; border-color:${t.tokens.border}">
+        <span class="tc-dot" style="background:${t.tokens.accent}"></span>
+        ${esc(t.name)}${t.dark ? '' : ' ☀︎'}
+      </button>`).join('');
+  };
+  renderVariants();
+  famRow.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-family]');
+    if (!b) return;
+    shownFamily = b.dataset.family;
+    renderVariants();
+  });
+  varRow.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-theme]');
+    if (!b) return;
+    updateSettings({ theme: b.dataset.theme });
+    applyTheme(b.dataset.theme);
+    renderVariants();
+    toast(`Theme: ${getTheme(b.dataset.theme).name}`);
+  });
 
   // focus limit
   view.querySelector('#focus-limit').addEventListener('click', (e) => {
