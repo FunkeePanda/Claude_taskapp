@@ -240,19 +240,31 @@ function optionToolbar(task) {
     </div>`;
 }
 
-// Tap binding that survives iOS layout shifts: when the keyboard dismisses
-// mid-tap the sheet moves between touchstart and click, and Safari drops
-// the click entirely. touchend still fires on the element the finger went
-// down on, so handle taps there (and preventDefault so no ghost click
-// double-toggles); plain click covers mouse/desktop.
+// Tap binding for the option-chip row. Two iOS quirks, handled together:
+//
+// 1. touchend still fires on the element the finger went down on even when
+//    the keyboard is mid-dismiss, but Safari can drop the FOLLOWING click
+//    entirely — so we act on touchend directly (preventDefault stops the
+//    redundant native click); plain click covers mouse/desktop.
+// 2. Switching FROM the Tags or Notes panel (the only two with a real text
+//    input) blurs that input, and iOS starts animating the keyboard closed
+//    mid-gesture — the page can shift 15-20px vertically between touchstart
+//    and touchend of the very next tap. A generic "did the finger move more
+//    than N px, if so treat it as a drag" guard (useful on a scrollable
+//    surface) misreads that page shift as a drag and cancels the tap, which
+//    is exactly why only Tags<->Notes felt laggy: it's the only pair where
+//    a keyboard was ever up to begin with. This row never scrolls, so
+//    there's no real drag to protect against — blur eagerly on touchstart
+//    (so the dismiss animation starts before the finger even lifts) and
+//    trust wherever the finger actually lands on touchend.
 function bindTap(el, handler) {
-  let sx = 0, sy = 0, t0 = 0;
-  el.addEventListener('touchstart', (e) => {
-    sx = e.touches[0].clientX; sy = e.touches[0].clientY; t0 = Date.now();
+  let t0 = 0;
+  el.addEventListener('touchstart', () => {
+    const active = document.activeElement;
+    if (active?.tagName === 'INPUT' || active?.tagName === 'TEXTAREA') active.blur();
+    t0 = Date.now();
   }, { passive: true });
   el.addEventListener('touchend', (e) => {
-    const t = e.changedTouches[0];
-    if (Math.abs(t.clientX - sx) > 12 || Math.abs(t.clientY - sy) > 12) return; // a drag, not a tap
     if (Date.now() - t0 > 600) return; // a hold, not a tap
     e.preventDefault();
     handler(e);
