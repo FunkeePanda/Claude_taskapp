@@ -97,6 +97,11 @@ export async function renderSettings(view, rerender) {
       <div class="row">
         <div><div class="label">Focus</div><div class="sub" id="build-sub">…</div></div>
       </div>
+      ${isNative ? `
+      <div class="row">
+        <div style="flex:1"><div class="label">App version</div><div class="sub" id="update-sub">Check for the latest version</div></div>
+        <button class="btn small" id="update-btn">Update</button>
+      </div>` : ''}
       <div class="row">
         <div class="sub">If nags stop arriving, check that battery optimization is off for Focus (Android Settings → Apps → Focus → Battery → Unrestricted). Some phones (Xiaomi, Huawei…) aggressively kill scheduled alarms.</div>
       </div>
@@ -261,10 +266,44 @@ export async function renderSettings(view, rerender) {
   });
 
   // build info
+  let installedBuild = null;
   try {
     const info = await App.getInfo();
+    installedBuild = parseInt(info.build, 10);
     view.querySelector('#build-sub').textContent = `v${info.version} (build ${info.build})`;
   } catch {
     view.querySelector('#build-sub').textContent = 'web preview';
+  }
+
+  // Update button (APK only): the sideloaded app can't self-update, so this
+  // checks the rolling release and, when a newer build exists, opens the
+  // download page. build number == the APK workflow's run number.
+  const RELEASES = 'https://github.com/FunkeePanda/Claude_taskapp/releases/latest';
+  const updateBtn = view.querySelector('#update-btn');
+  if (updateBtn) {
+    const updateSub = view.querySelector('#update-sub');
+    updateBtn.addEventListener('click', async () => {
+      updateBtn.disabled = true;
+      updateSub.textContent = 'Checking…';
+      try {
+        const resp = await fetch('https://api.github.com/repos/FunkeePanda/Claude_taskapp/releases/latest');
+        if (!resp.ok) throw new Error('offline');
+        const rel = await resp.json();
+        const latest = parseInt(/1\.0\.(\d+)/.exec(rel.name || '')?.[1], 10);
+        if (Number.isNaN(latest) || installedBuild == null || latest > installedBuild) {
+          // newer build (or can't tell) → send them to the download
+          updateSub.textContent = Number.isNaN(latest) ? 'Opening downloads…' : `v1.0.${latest} available — opening…`;
+          window.open(RELEASES, '_blank');
+        } else {
+          updateSub.textContent = 'You’re on the latest version ✓';
+        }
+      } catch {
+        // no network to check — just take them to the page anyway
+        updateSub.textContent = 'Opening downloads…';
+        window.open(RELEASES, '_blank');
+      } finally {
+        updateBtn.disabled = false;
+      }
+    });
   }
 }
