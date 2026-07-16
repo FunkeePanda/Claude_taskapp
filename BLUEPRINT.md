@@ -433,10 +433,13 @@ only path, and `PushManager` exists **only after Add-to-Home-Screen**
   signed with a **self-signed keystore COMMITTED to the repo** (personal
   sideloaded app: the key protects nothing, but a CONSTANT key is what lets
   updates install over old builds with data intact — **never regenerate
-  it**), `versionCode = workflow run number`, upload `focus.apk` to a
-  **rolling `latest` release** so the download URL never changes. Note:
-  replacing the asset mid-download corrupts that download → Android says
-  "App not installed"; tell users to delete stale downloads and re-grab.
+  it**), `versionCode = workflow run number`, upload the APK to a
+  **rolling `latest` release** with a **VERSIONED filename**
+  (`focus-v1.0.<run>.apk`) and delete older assets after publishing — every
+  download then saves as a distinct file on the phone, so a stale copy in
+  Downloads can never be mistaken for (or reinstalled as) the new build.
+  This was learned the hard way: identical filenames caused users to
+  reinstall old `focus (1).apk` copies and report "the update didn't work."
 - **Worker workflow**: on pushes touching the worker — wrangler deploy, with
   idempotent D1 create/schema steps. Secrets: Cloudflare account id + API
   token + VAPID private key.

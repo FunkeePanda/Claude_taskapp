@@ -7,16 +7,17 @@ and you install it straight from your browser.
 
 ## Install on your Android phone
 
-1. Open **[the latest release](https://github.com/FunkeePanda/Claude_taskapp/releases/latest)** in Chrome
-   (or grab the APK directly: [focus.apk](https://github.com/FunkeePanda/Claude_taskapp/releases/download/latest/focus.apk)).
-2. Download `focus.apk` under **Assets**.
+1. Open **[the latest release](https://github.com/FunkeePanda/Claude_taskapp/releases/latest)** in Chrome.
+2. Download the APK under **Assets** — it's named after its version
+   (e.g. `focus-v1.0.34.apk`), so you always know exactly which build you have.
 3. Open the download. Android will warn about installing unknown apps —
    allow Chrome (or your file manager) as a source. This is a one-time step.
-4. Tap **Install**. Done.
+4. Tap **Install**. Done — Settings → About in the app shows the same version.
 
-**Updating:** just download the newer APK from the same link and open it —
-it installs *over* the old version and **your tasks are kept**. Never uninstall
-to update (that would wipe your data).
+**Updating:** tap **Update** in the app's Settings → About (or download the
+newer APK from the same link) and open it — it installs *over* the old version
+and **your tasks are kept**. Never uninstall to update (that would wipe your
+data).
 
 ### First-run checklist
 
