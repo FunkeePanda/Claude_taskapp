@@ -1,0 +1,22 @@
+{
+  "name": "focus-task-app",
+  "version": "1.0.0",
+  "description": "Focus — a task manager with nag reminders, built and used entirely from a phone",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "serve": "python3 -m http.server 8080 --directory www"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/app": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/filesystem": "^7.0.0",
+    "@capacitor/local-notifications": "^7.0.0",
+    "@capacitor/share": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.0.0"
+  }
+}

@@ -1,0 +1,71 @@
+name: Deploy push worker
+
+on:
+  push:
+    branches: [main, 'claude/**']
+    paths: ['worker/**', '.github/workflows/worker-deploy.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: worker-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Skip if Cloudflare secrets missing
+        id: gate
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "Secrets not configured yet — skipping (see worker/wrangler.toml)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install
+        if: steps.gate.outputs.ready == 'true'
+        run: npm install
+
+      # Idempotent: create is tolerated if the DB exists; the schema is
+      # all IF NOT EXISTS. The real database id is looked up and swapped
+      # into wrangler.toml (a no-op once the id is committed for real).
+      - name: Ensure D1 database + schema
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          npx wrangler d1 create focus-push-db || echo "focus-push-db already exists"
+          DB_ID=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="focus-push-db") | .uuid')
+          echo "D1_DATABASE_ID=$DB_ID"
+          sed -i "s/REPLACE_AFTER_D1_CREATE/$DB_ID/" wrangler.toml
+          npx wrangler d1 execute focus-push-db --remote --file=schema.sql --yes
+
+      - name: Deploy worker
+        if: steps.gate.outputs.ready == 'true'
+        run: npx wrangler deploy
+
+      # First run only: generate the VAPID pair in CI, pipe the private
+      # JWK straight into the Worker secret (never printed or stored),
+      # and log the public key so it can be embedded client-side.
+      - name: Ensure VAPID keys
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          if npx wrangler secret list | grep -q VAPID_PRIVATE_KEY; then
+            echo "VAPID_PRIVATE_KEY already set — keeping it (rotating would break existing subscriptions)"
+          else
+            node scripts/vapid-keys.mjs > /tmp/vapid.json
+            jq -r '.privateJWK' /tmp/vapid.json | npx wrangler secret put VAPID_PRIVATE_KEY
+            echo "VAPID_PUBLIC_KEY=$(jq -r '.publicKey' /tmp/vapid.json)"
+            rm /tmp/vapid.json
+          fi

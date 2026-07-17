@@ -1,0 +1,67 @@
+/* Compositor-only animations (transform / opacity) */
+
+/* check-circle sequence: bubbles converge → fill center-out → check pops */
+@keyframes fill-in  { from { transform: scale(0); } to { transform: scale(1); } }
+@keyframes fill-out { from { transform: scale(1); } to { transform: scale(0); } }
+@keyframes check-pop { from { transform: scale(0); } to { transform: scale(1); } }
+@keyframes check-out { from { transform: scale(1); } to { transform: scale(0); } }
+@keyframes bubble-in {
+  from { transform: translate(var(--x), var(--y)) scale(1); opacity: 1; }
+  to   { transform: translate(0, 0) scale(0.4); opacity: 0.9; }
+}
+@keyframes bubble-out {
+  from { transform: translate(0, 0) scale(0.9); opacity: 0.9; }
+  to   { transform: translate(var(--x), var(--y)) scale(0.25); opacity: 0; }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes view-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pop-in {
+  0% { opacity: 0; transform: scale(0.9); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.view.entering { animation: view-in 0.22s ease both; }
+
+/* list entry animation plays only when a tab is newly navigated to —
+   rerenders after taps must not make the cards "jiggle" */
+.view.entering .stagger > * {
+  animation: fade-up 0.3s ease both;
+  animation-delay: calc(var(--i, 0) * 30ms);
+}
+
+/* Task completion: scale + fade, then row collapse via grid trick */
+.task-card.completing {
+  animation: complete-pulse 0.32s ease forwards;
+}
+@keyframes complete-pulse {
+  0% { transform: scale(1); opacity: 1; }
+  35% { transform: scale(0.975); }
+  100% { transform: scale(0.96); opacity: 0; }
+}
+
+.collapse-wrap {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.28s ease, margin 0.28s ease;
+}
+.collapse-wrap.collapsed { grid-template-rows: 0fr; margin-bottom: 0 !important; }
+.collapse-wrap > * { overflow: hidden; min-height: 0; }
+
+.pop-in { animation: pop-in 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

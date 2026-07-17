@@ -1,0 +1,31 @@
+name: Deploy web preview to Pages
+
+on:
+  push:
+    branches: [main, 'claude/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Version stamp: the PWA polls this on launch/resume and reloads
+      # itself when a new build is live, so iOS home-screen installs
+      # can't keep running stale code.
+      - run: echo "{\"build\":\"${GITHUB_SHA}\"}" > www/version.json
+      # Publishes www/ to the gh-pages branch. GitHub typically auto-enables
+      # Pages for a gh-pages branch; if the preview URL 404s, enable it once
+      # in repo Settings → Pages → Deploy from branch → gh-pages.
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: www
+          force_orphan: true

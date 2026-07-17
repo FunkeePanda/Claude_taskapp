@@ -1,1 +1,110 @@
-# Claude_taskapp
+# Focus 📱
+
+A task manager built for people who lose track of time — with **nag reminders**
+that keep firing until you actually do the thing. Built, shipped, and used
+entirely from a phone: the code lives here, GitHub Actions builds the app,
+and you install it straight from your browser.
+
+## Install on your Android phone
+
+1. Open **[the latest release](https://github.com/FunkeePanda/Claude_taskapp/releases/latest)** in Chrome.
+2. Download the APK under **Assets** — it's named after its version
+   (e.g. `focus-v1.0.34.apk`), so you always know exactly which build you have.
+3. Open the download. Android will warn about installing unknown apps —
+   allow Chrome (or your file manager) as a source. This is a one-time step.
+4. Tap **Install**. Done — Settings → About in the app shows the same version.
+
+**Updating:** tap **Update** in the app's Settings → About (or download the
+newer APK from the same link) and open it — it installs *over* the old version
+and **your tasks are kept**. Never uninstall to update (that would wipe your
+data).
+
+### First-run checklist
+
+- Open **Settings → Enable notifications** and accept the prompt.
+- Tap **🔔 Test notification in 2 minutes**, then swipe the app away.
+  If the notification arrives with the app closed, reminders will work.
+- If nags ever stop arriving: go to Android Settings → Apps → Focus →
+  Battery → **Unrestricted**. Some phones (Xiaomi, Huawei, Samsung with
+  aggressive battery savers) kill scheduled alarms otherwise.
+
+## Install on iPhone / iPad
+
+There's no APK equivalent on iOS — Apple only allows native apps onto a
+phone through a developer enrolled in the Apple Developer Program ($99/yr).
+Until that's set up, install Focus as a **home-screen web app** instead —
+same interface, same data model, just delivered through Safari:
+
+1. Open **https://funkeepanda.github.io/Claude_taskapp/** in **Safari**
+   (must be Safari — Chrome/Firefox on iOS can't add home-screen apps).
+2. Tap the **Share** icon (square with an arrow) in the toolbar.
+3. Scroll down and tap **Add to Home Screen**, then **Add**.
+4. Open Focus from your home screen like any other app — it runs full-screen,
+   no browser chrome.
+
+**The one thing that doesn't work here:** background "notify me every X
+minutes" reminders. iOS doesn't let home-screen web apps schedule reliable
+background notifications the way the Android app can. Everything else —
+tasks, subtasks, the calendar, colors, focus sessions while the app is
+open — works exactly the same. A full native iOS app (with working
+reminders, distributed via TestFlight) is possible later if there's an
+Apple Developer account to build it against.
+
+## What it does
+
+- **Smart Today view** — picks a small focus list from due dates, priority,
+  and how long tasks have been sitting. Overdue tasks are always shown.
+- **Natural-language quick add** — type `pay rent friday 5pm high priority every 2h #bills`
+  and it parses the date, time, priority, nag interval, and tags into chips
+  you can tap away if it guessed wrong.
+- **Nag reminders** — "remind me every 30 minutes until I do it." Notifications
+  keep coming (even with the app closed) until you tap **✓ Done** — right from
+  the lockscreen. **Snooze 1h** when you need a break. Quiet hours (default
+  22:00–08:00) are respected.
+- **Energy matching** — tag tasks ⚡ quick win or 🧠 deep focus, then tell the
+  app how you're feeling; it reorders your list to match (and resets after 4h).
+- **Nested subtasks** — break a project into subtasks (and sub-subtasks) with
+  collapsible trees, progress counts, and cascade-complete with undo.
+- **Calendar** — a month view with a dot on any day that has open tasks;
+  tap a day to see and check off what's due.
+- **Backup** — Settings → Export shares a JSON file (save it to Drive/anywhere);
+  Import restores it. Do this now and then — it's your safety net.
+
+## Web preview
+
+The same app can run at **https://funkeepanda.github.io/Claude_taskapp/**
+for a quick look at UI changes without installing anything. Everything works
+there **except notifications** — those need the installed app.
+
+One-time setup (GitHub doesn't let CI switch this on): open the repo's
+**Settings → Pages**, set Source to **Deploy from a branch**, pick the
+**gh-pages** branch (root folder), and save. The URL goes live a minute later
+and updates automatically on every push after that.
+
+## How this repo works (no computer required)
+
+| Piece | What it does |
+|---|---|
+| `www/` | The entire app: vanilla HTML/CSS/JS, no build step |
+| `www/js/native.js` | Shim: real Capacitor plugins on-device, mocks in a browser |
+| `android/` | Committed Capacitor Android project (manifest, signing, icons) |
+| `.github/workflows/android-apk.yml` | Builds a signed APK on every push → [releases/latest](https://github.com/FunkeePanda/Claude_taskapp/releases/latest) |
+| `.github/workflows/pages.yml` | Deploys `www/` to GitHub Pages on every push |
+| `test/` | Unit tests for the parser, focus scoring, and reminder math (`npm test`) |
+
+**Signing:** the keystore is committed on purpose. This app is personal and
+sideloaded — the key secures nothing, but a *constant* key is what lets each
+new build install over the last one with data intact. If the repo ever needs
+a real distribution story, move the keystore to a GitHub Secret.
+
+**Version code** comes from the CI run number, so it always increases and
+Android always accepts the update.
+
+## Known limitations
+
+- Nags are scheduled ~12 hours ahead (Android limits pending alarms).
+  Opening the app refills the window — if you don't open it for a day,
+  nags pause until you do.
+- "Clear app data" in Android settings wipes tasks. Export regularly.
+- Tasks live on this one device (by design — no accounts, no cloud).
+  Moving phones = export on the old one, import on the new one.

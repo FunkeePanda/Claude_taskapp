@@ -1,0 +1,508 @@
+/* ---------- Theme tokens ---------- */
+:root {
+  color-scheme: dark; /* applyTheme() overrides per theme (light variants) */
+  --bg: #1b2026;
+  --bg-elev: #242b33;
+  --bg-elev-2: #2e3742;
+  --text: #e8eaed;
+  --text-dim: #97a3b0;
+  --text-faint: #64707d;
+  --accent: #a63446;
+  --accent-bright: #c4576a;
+  --accent-deep: #7c2434;
+  --accent-soft: rgba(166, 52, 70, 0.18);
+  --good: #3ecf8e;
+  --warn: #f39c12;
+  --danger: #ff6b5e;
+  --anim: 1; /* duration multiplier for the check sequence */
+  --border: rgba(255, 255, 255, 0.07);
+  --radius: 16px;
+  --radius-sm: 10px;
+  --tabbar-h: 64px;
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --accent-shadow: rgba(166, 52, 70, 0.45);
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; }
+/* kill iOS's double-tap-zoom wait so buttons respond to the first tap */
+button, .chip, .swatch { touch-action: manipulation; }
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+  /* Safari needs the -webkit- prefix, and iOS also needs the long-press
+     callout suppressed, or text outside inputs still highlights */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+input, textarea {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/* ---------- Layout ---------- */
+.view {
+  padding: calc(16px + var(--safe-top)) 16px calc(var(--tabbar-h) + 88px + var(--safe-bottom));
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+h1.screen-title { font-size: 1.65rem; font-weight: 700; letter-spacing: -0.02em; }
+.screen-sub { color: var(--text-dim); font-size: 0.95rem; margin-top: 2px; }
+.section-label {
+  font-size: 0.78rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--text-faint); margin: 22px 0 10px;
+}
+
+/* ---------- Tab bar ---------- */
+.tabbar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  height: calc(var(--tabbar-h) + var(--safe-bottom));
+  padding-bottom: var(--safe-bottom);
+  display: flex;
+  background: color-mix(in srgb, var(--bg-elev) 88%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-top: 1px solid var(--border);
+  z-index: 40;
+}
+.tab {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; background: none; border: none; color: var(--text-faint);
+  font-size: 0.7rem; font-weight: 600; font-family: inherit; cursor: pointer;
+  transition: color 0.2s ease;
+}
+.tab svg { width: 23px; height: 23px; }
+.tab.active { color: var(--accent); }
+
+/* ---------- FAB ---------- */
+.fab {
+  position: fixed; right: 18px; bottom: calc(var(--tabbar-h) + 18px + var(--safe-bottom));
+  width: 58px; height: 58px; border-radius: 50%;
+  background: var(--accent); color: #fff; border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 6px 20px var(--accent-shadow);
+  z-index: 41;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.18s ease;
+}
+.fab svg { width: 26px; height: 26px; }
+.fab:active { transform: scale(0.9); }
+.fab.hidden { transform: scale(0); opacity: 0; pointer-events: none; }
+
+/* ---------- Cards / task rows ---------- */
+.card {
+  background: var(--bg-elev); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px;
+}
+
+.task-card {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px;
+  background: var(--bg-elev); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 13px 14px; margin-bottom: 9px;
+  position: relative; overflow: hidden;
+  touch-action: pan-y;
+  transition: transform 0.2s ease, opacity 0.3s ease;
+}
+.task-card.dragging { transition: opacity 0.3s ease; }
+.task-card .title { font-size: 0.98rem; font-weight: 550; line-height: 1.3; overflow-wrap: anywhere; }
+.task-card.done { opacity: 0.55; }
+.task-card.done .title {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--text) 60%, transparent);
+  color: var(--text-faint);
+}
+
+/* swipe-left parks the card over a delete button (iOS Mail style) */
+.swipe-stage { position: relative; }
+.trash-btn {
+  position: absolute; top: 0; bottom: 9px; right: 14px; margin: auto 0;
+  width: 46px; height: 46px; border-radius: 50%;
+  border: none; cursor: pointer; background: var(--danger); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transform: scale(0.6); pointer-events: none;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.15s ease;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+.trash-btn svg { width: 21px; height: 21px; }
+.swipe-stage.revealed .trash-btn { opacity: 1; transform: scale(1); pointer-events: auto; }
+.trash-btn:active { transform: scale(0.88); }
+.task-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; align-items: center; }
+
+/* check circle */
+.check {
+  position: relative;
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 2px solid var(--text-faint);
+  background: none; cursor: pointer; padding: 0; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color calc(0.25s * var(--anim)) ease;
+}
+/* invisible halo: the tap target extends past the visible circle */
+.check::after {
+  content: '';
+  position: absolute; inset: -9px;
+  border-radius: 50%;
+}
+.check .fill {
+  position: absolute; inset: -2px; border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-bright) 0%, var(--accent) 70%);
+  transform: scale(0);
+  pointer-events: none;
+}
+.check svg { width: 15px; height: 15px; position: relative; transform: scale(0); }
+.check svg path {
+  stroke: #fff; stroke-width: 3.2; fill: none;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.check.filled { border-color: var(--accent); }
+.check.filled .fill { transform: scale(1); }
+.check.filled svg { transform: scale(1); }
+.check.filling .fill { animation: fill-in calc(0.26s * var(--anim)) cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+.check.unfilling .fill { animation: fill-out calc(0.22s * var(--anim)) cubic-bezier(0.4, 0, 1, 1) forwards; }
+.check.checkpop svg { animation: check-pop calc(0.24s * var(--anim)) cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+.check.checkout svg { animation: check-out calc(0.14s * var(--anim)) ease-in forwards; }
+.check.prio-2:not(.filled) { border-color: var(--danger); }
+.check.prio-0:not(.filled) { border-color: var(--text-faint); border-style: dashed; }
+
+/* converging / bursting bubbles spawned on (un)complete */
+.check .bubble {
+  position: absolute; left: 50%; top: 50%;
+  border-radius: 50%;
+  pointer-events: none;
+  width: var(--s); height: var(--s);
+  margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
+  background: var(--c);
+}
+.check .bubble.in  { animation: bubble-in  calc(var(--t) * var(--anim)) cubic-bezier(0.5, 0, 0.75, 0.6) var(--d) both; }
+.check .bubble.out { animation: bubble-out calc(var(--t) * var(--anim)) cubic-bezier(0.25, 0.4, 0.5, 1) var(--d) both; }
+
+/* chips */
+.chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.72rem; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+  background: var(--bg-elev-2); color: var(--text-dim); border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.chip.due { color: var(--text-dim); }
+.chip.due.today { background: var(--accent-soft); color: var(--accent-bright); border-color: transparent; }
+.chip.due.overdue { background: rgba(255, 107, 94, 0.14); color: var(--danger); border-color: transparent; }
+.chip.prio-high { background: rgba(255, 107, 94, 0.14); color: var(--danger); border-color: transparent; }
+.chip.nag { color: var(--accent-bright); }
+.chip.tag { color: var(--text-dim); }
+.chip.chip-active { background: var(--accent-soft); color: var(--accent-bright); border-color: transparent; }
+.chip .x { border: none; background: none; color: inherit; font-size: 0.85rem; padding: 0 0 0 2px; cursor: pointer; line-height: 1; }
+
+/* buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  font-family: inherit; font-size: 0.92rem; font-weight: 600;
+  padding: 12px 18px; border-radius: var(--radius-sm); border: none; cursor: pointer;
+  background: var(--accent); color: #fff;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.btn:active { transform: scale(0.97); }
+.btn.secondary { background: var(--bg-elev-2); color: var(--text); border: 1px solid var(--border); }
+.btn.danger { background: rgba(255, 107, 94, 0.14); color: var(--danger); }
+.btn.small { padding: 8px 13px; font-size: 0.82rem; border-radius: 9px; }
+.btn.block { width: 100%; }
+.btn:disabled { opacity: 0.45; pointer-events: none; }
+
+/* segmented control */
+.segment { display: flex; background: var(--bg-elev-2); border-radius: var(--radius-sm); padding: 3px; gap: 3px; }
+.segment button {
+  flex: 1; border: none; background: none; color: var(--text-dim); font-family: inherit;
+  font-size: 0.83rem; font-weight: 600; padding: 9px 4px; border-radius: 8px; cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.segment button.active { background: var(--accent); color: #fff; }
+
+/* inputs */
+.field { margin-bottom: 14px; }
+.field label { display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-dim); margin-bottom: 6px; }
+.input, textarea.input {
+  width: 100%; font-family: inherit; font-size: 0.95rem;
+  background: var(--bg-elev-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 12px 14px; outline: none;
+  transition: border-color 0.2s ease;
+}
+/* the highlight lands on the first tap and stays until the control is
+   left (blur) or a selection is made */
+.input:focus, .input:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+textarea.input { resize: vertical; min-height: 64px; }
+/* date/time inputs follow the active theme's scheme (set on :root) */
+input[type='datetime-local'].input, input[type='date'].input, input[type='time'].input {
+  min-height: 46px; /* iOS collapses empty date inputs to a sliver */
+}
+
+/* ---------- Bottom sheet ---------- */
+.sheet-scrim {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55); z-index: 50;
+  opacity: 0; transition: opacity 0.22s ease;
+}
+.sheet-scrim.open { opacity: 1; }
+.sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 51;
+  background: var(--bg-elev); border-radius: 22px 22px 0 0;
+  padding: 10px 18px calc(20px + var(--safe-bottom));
+  max-height: 88vh; overflow-y: auto;
+  overscroll-behavior: contain;
+  transform: translateY(100%);
+  transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+  box-shadow: var(--shadow);
+}
+.sheet.open { transform: translateY(0); }
+.sheet .grabber { width: 40px; height: 4px; border-radius: 2px; background: var(--text-faint); margin: 4px auto 14px; }
+.sheet h2 { font-size: 1.15rem; margin-bottom: 14px; padding-right: 34px; }
+.sheet-close {
+  position: absolute; top: 12px; right: 14px;
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 1px solid var(--border); background: var(--bg-elev-2);
+  color: var(--text-dim); font-size: 0.9rem; font-family: inherit;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+
+/* ---------- Option toolbar (chips + accordion panels) ---------- */
+.opt-row { display: flex; flex-wrap: wrap; gap: 7px; margin: 4px 0 2px; }
+.opt-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border); background: var(--bg-elev-2);
+  color: var(--text-dim); font-family: inherit; font-size: 0.8rem; font-weight: 600;
+  padding: 8px 12px; border-radius: 999px; cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.opt-chip svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.opt-chip.set { background: var(--accent-soft); color: var(--accent-bright); border-color: transparent; }
+.opt-chip.open { border-color: var(--accent); }
+.opt-dot { display: inline-block; width: 13px; height: 13px; border-radius: 50%; }
+.opt-panel {
+  background: var(--bg-elev-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 12px; margin-top: 10px;
+}
+.opt-panel .input { background: var(--bg-elev); }
+.opt-panel .segment { background: var(--bg-elev); }
+.opt-panel .wheel-row { background: var(--bg-elev); }
+
+.timing-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 9px 0;
+}
+.timing-row + .timing-row { border-top: 1px solid var(--border); }
+.timing-row .label { font-size: 0.9rem; font-weight: 600; }
+.sub2 { font-size: 0.73rem; color: var(--text-faint); margin-top: 1px; }
+
+/* color swatches */
+.swatch-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.swatch {
+  width: 34px; height: 34px; border-radius: 50%; border: none; cursor: pointer;
+  background: var(--sw);
+  display: flex; align-items: center; justify-content: center;
+}
+.swatch.none { background: var(--bg-elev); border: 1px dashed var(--text-faint); color: var(--text-faint); font-size: 0.8rem; }
+.swatch.sel { box-shadow: 0 0 0 2px var(--bg-elev-2), 0 0 0 4px var(--text); }
+
+/* colored category pill on cards */
+.chip.cat { border-color: transparent; }
+.chip.cat .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+
+/* filter picker chips (Category / Tags) and picker sheets */
+.chip.picker-chip { padding: 7px 13px; font-size: 0.8rem; cursor: pointer; font-family: inherit; }
+.chip.picker-chip .dot { width: 9px; height: 9px; border-radius: 50%; }
+.picker-opts { min-height: 38px; max-height: 40vh; overflow-y: auto; align-content: flex-start; }
+.chip.pick { padding: 8px 14px; font-size: 0.85rem; cursor: pointer; font-family: inherit; }
+
+/* theme variant chips: each painted in its own palette */
+.theme-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: inherit; font-size: 0.85rem; font-weight: 600;
+  padding: 10px 15px; border-radius: 999px; border: 1px solid var(--border);
+  cursor: pointer; margin: 0 8px 8px 0;
+}
+.theme-chip .tc-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+.theme-chip.sel { box-shadow: 0 0 0 2px var(--bg-elev), 0 0 0 4px var(--tc-a); }
+
+/* play/stop session button on cards */
+.play-btn {
+  border: 1px solid var(--border); background: var(--bg-elev-2); color: var(--text-dim);
+  width: 34px; height: 34px; border-radius: 50%; cursor: pointer; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.play-btn svg { width: 15px; height: 15px; fill: currentColor; }
+.play-btn.running { background: var(--accent-soft); color: var(--accent-bright); border-color: var(--accent); }
+
+/* ---------- Toggle switch ---------- */
+.switch {
+  position: relative; width: 48px; height: 28px; border-radius: 999px;
+  border: none; background: var(--bg-elev-2); cursor: pointer; padding: 0;
+  transition: background 0.2s ease; flex-shrink: 0;
+}
+.switch::after {
+  content: '';
+  position: absolute; top: 3px; left: 3px;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--text-dim);
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+.switch.on { background: var(--accent); }
+.switch.on::after { transform: translateX(20px); background: #fff; }
+
+/* ---------- Interval wheel picker ---------- */
+.wheel-row {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  background: var(--bg-elev-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 8px 0; margin-top: 10px;
+  position: relative;
+  /* the whole row is a drag surface (JS forwards vertical pans to the
+     nearest wheel), so the browser must not claim these touches */
+  touch-action: none;
+}
+.wheel-row::before {
+  content: '';
+  position: absolute; left: 10px; right: 10px; top: 50%;
+  height: 68px; transform: translateY(-50%);
+  background: var(--accent-soft); border-radius: 12px;
+  pointer-events: none;
+}
+.wheel {
+  height: 180px; width: 72px; overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+  /* a wheel that hits its end must NOT hand the scroll to the sheet */
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  position: relative;
+  mask-image: linear-gradient(transparent, #000 32%, #000 68%, transparent);
+  -webkit-mask-image: linear-gradient(transparent, #000 32%, #000 68%, transparent);
+}
+.wheel::-webkit-scrollbar { display: none; }
+.wheel .pad { height: 72px; }
+.wheel .item {
+  height: 36px; display: flex; align-items: center; justify-content: center;
+  scroll-snap-align: center;
+  font-size: 1.05rem; font-weight: 600; color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.wheel-unit { font-size: 0.8rem; font-weight: 600; color: var(--text-dim); width: 34px; }
+
+/* ---------- Toast ---------- */
+.toast {
+  position: fixed; left: 50%; bottom: calc(var(--tabbar-h) + 84px + var(--safe-bottom));
+  transform: translateX(-50%) translateY(12px);
+  background: var(--bg-elev-2); color: var(--text); border: 1px solid var(--border);
+  padding: 11px 18px; border-radius: 999px; font-size: 0.87rem; font-weight: 550;
+  box-shadow: var(--shadow); z-index: 60; opacity: 0;
+  display: flex; align-items: center; gap: 10px;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  max-width: calc(100vw - 40px); white-space: nowrap;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast button { border: none; background: none; color: var(--accent); font-weight: 700; font-family: inherit; font-size: 0.87rem; cursor: pointer; }
+
+/* ---------- Empty states ---------- */
+.empty { text-align: center; padding: 44px 20px; color: var(--text-dim); }
+.empty .big { font-size: 2.6rem; margin-bottom: 10px; }
+.empty p { font-size: 0.92rem; line-height: 1.5; }
+
+/* ---------- Settings rows ---------- */
+.row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 2px; border-bottom: 1px solid var(--border);
+}
+.row:last-child { border-bottom: none; }
+.row .label { font-size: 0.94rem; font-weight: 550; }
+.row .sub { font-size: 0.78rem; color: var(--text-dim); margin-top: 2px; }
+.status-pill { font-size: 0.75rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+.status-pill.ok { background: rgba(62, 207, 142, 0.15); color: var(--good); }
+.status-pill.bad { background: rgba(255, 107, 94, 0.14); color: var(--danger); }
+
+/* ---------- Subtasks: tree structure with connector lines ---------- */
+:root { --tree-line: rgba(255, 255, 255, 0.16); }
+
+.tree-node { position: relative; }
+/* indent via padding (not margin) so the connector lines stay inside
+   the box and survive the slide animation's overflow:hidden */
+.subtree { padding-left: 34px; position: relative; }
+
+/* elbow from the parent's spine into this card */
+.subtree > .tree-node::before {
+  content: '';
+  position: absolute; left: -20px; top: -10px;
+  width: 17px; height: 42px;
+  border-left: 2px solid var(--tree-line);
+  border-bottom: 2px solid var(--tree-line);
+  border-bottom-left-radius: 14px;
+  pointer-events: none;
+}
+/* the spine continues past every sibling except the last */
+.subtree > .tree-node:not(:last-child)::after {
+  content: '';
+  position: absolute; left: -20px; top: -10px; bottom: -9px;
+  border-left: 2px solid var(--tree-line);
+  pointer-events: none;
+}
+
+/* slide-down reveal: subtasks emerge from behind the parent card */
+.subtree-clip {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.28s ease;
+}
+.subtree-clip > .subtree { overflow: hidden; min-height: 0; transition: transform 0.28s ease, opacity 0.28s ease; }
+.subtree-clip.closed { grid-template-rows: 0fr; }
+.subtree-clip.closed > .subtree { transform: translateY(-14px); opacity: 0; }
+
+.parent-label {
+  font-size: 0.7rem; font-weight: 600; color: var(--text-faint);
+  margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chip.progress { background: var(--accent-soft); color: var(--accent-bright); border-color: transparent; font-variant-numeric: tabular-nums; }
+.chevron {
+  border: none; background: none; color: var(--text-faint); cursor: pointer;
+  width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; flex-shrink: 0;
+}
+.chevron svg { width: 19px; height: 19px; transition: transform 0.2s ease; }
+.chevron.closed svg { transform: rotate(-90deg); }
+
+/* ---------- Calendar ---------- */
+.cal-nav { display: flex; align-items: center; justify-content: space-between; margin: 16px 0 8px; }
+.cal-nav .month { font-size: 1.05rem; font-weight: 700; }
+.cal-nav button {
+  border: 1px solid var(--border); background: var(--bg-elev); color: var(--text-dim);
+  font-family: inherit; font-size: 0.95rem; font-weight: 600;
+  width: 38px; height: 38px; border-radius: 50%; cursor: pointer;
+}
+.cal-nav .today-jump { width: auto; padding: 0 14px; font-size: 0.78rem; border-radius: 999px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.cal-wd {
+  text-align: center; font-size: 0.66rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--text-faint); padding: 6px 0;
+}
+.cal-day {
+  aspect-ratio: 1; border: none; background: none; color: var(--text);
+  font-family: inherit; font-size: 0.86rem; font-weight: 550;
+  border-radius: 12px; cursor: pointer; position: relative;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+}
+.cal-day:disabled { visibility: hidden; }
+.cal-day.other { color: var(--text-faint); }
+.cal-day.today { box-shadow: inset 0 0 0 1.5px var(--accent-bright); }
+.cal-day.selected { background: var(--accent); color: #fff; }
+.cal-day .dot {
+  width: 5px; height: 5px; border-radius: 50%; background: var(--accent-bright);
+}
+.cal-day.selected .dot { background: #fff; }
+.cal-day .dot.none { background: transparent; }

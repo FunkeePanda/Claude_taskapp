@@ -1,0 +1,17 @@
+name = "focus-push"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+
+[triggers]
+# every minute — matches the client's reminder granularity; well inside
+# the free tier's Cron Trigger + request allowances
+crons = ["*/1 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "focus-push-db"
+database_id = "c0249191-4cb8-4e9e-9ab8-5054eb08716d"
+
+# VAPID_PRIVATE_KEY (JWK JSON string) is set via:
+#   wrangler secret put VAPID_PRIVATE_KEY
+# — not in this file, never committed.
