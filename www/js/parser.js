@@ -9,6 +9,10 @@
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july',
   'august', 'september', 'october', 'november', 'december'];
+const HOUR_WORDS = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
+  seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
+};
 
 function startOfDay(d) {
   const x = new Date(d);
@@ -147,6 +151,20 @@ export function parse(input, now = new Date()) {
     }) ||
     consume(/\bnoon\b/i, 'time', () => { time = { h: 12, m: 0 }; }) ||
     consume(/\bmidnight\b/i, 'time', () => { time = { h: 23, m: 59 }; }) ||
+    // spelled-out hour + an explicit meridiem ("six in the morning", "six
+    // am", "six o'clock pm") — must come before the bare morning/afternoon/
+    // evening defaults below, or "six in the morning" would only match the
+    // word "morning" and silently default to 9:00 instead of 6:00.
+    consume(new RegExp(
+      `\\b(?:at\\s+)?(${Object.keys(HOUR_WORDS).join('|')})\\s*(?:o.?clock)?\\s*(in the morning|in the afternoon|in the evening|a\\.m\\.|am|p\\.m\\.|pm)\\b`,
+      'i',
+    ), 'time', (m) => {
+      let h = HOUR_WORDS[m[1].toLowerCase()];
+      const isAM = /morning|^a\.?m\.?$/i.test(m[2]);
+      if (h === 12) h = isAM ? 0 : 12;   // "twelve...am/morning" = midnight, "...pm/afternoon/evening" = noon
+      else if (!isAM) h += 12;
+      time = { h, m: 0 };
+    }) ||
     consume(/\b(this\s+)?morning\b/i, 'time', () => { time = { h: 9, m: 0 }; }) ||
     consume(/\b(this\s+)?afternoon\b/i, 'time', () => { time = { h: 14, m: 0 }; }) ||
     consume(/\b(this\s+)?evening\b/i, 'time', () => { time = { h: 18, m: 0 }; });

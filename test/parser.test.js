@@ -146,3 +146,47 @@ test('matches record what was consumed (for UI chips)', () => {
   const types = r.matches.map(m => m.type).sort();
   assert.deepEqual(types, ['due', 'priority']);
 });
+
+// ---------- spelled-out hour + meridiem ("six in the morning", "six am") ----------
+
+test('spelled-out hour + "in the morning" (the reported bug)', () => {
+  const r = parse('tomorrow at six in the morning check the market', NOW);
+  assert.equal(r.title, 'check the market');
+  const due = new Date(r.due);
+  assert.equal(due.getHours(), 6);
+  assert.equal(due.getMinutes(), 0);
+  assert.equal(r.allDay, false);
+});
+
+test('spelled-out hour + am/pm', () => {
+  assert.equal(new Date(parse('call mom six am', NOW).due).getHours(), 6);
+  assert.equal(new Date(parse('submit report eleven pm', NOW).due).getHours(), 23);
+});
+
+test('spelled-out hour + "in the afternoon"/"in the evening"', () => {
+  assert.equal(new Date(parse('meeting at nine in the afternoon', NOW).due).getHours(), 21);
+  assert.equal(new Date(parse('walk the dog seven in the evening', NOW).due).getHours(), 19);
+});
+
+test('spelled-out "twelve" is noon or midnight depending on meridiem', () => {
+  assert.equal(new Date(parse('lunch at twelve in the afternoon', NOW).due).getHours(), 12);
+  assert.equal(new Date(parse('wake up twelve in the morning', NOW).due).getHours(), 0);
+  assert.equal(new Date(parse('party twelve am', NOW).due).getHours(), 0);
+  assert.equal(new Date(parse('party twelve pm', NOW).due).getHours(), 12);
+});
+
+test('a spelled-out number with no meridiem is left alone, not guessed', () => {
+  const r = parse('buy a six pack of soda', NOW);
+  assert.equal(r.due, null);
+  assert.equal(r.title, 'buy a six pack of soda');
+});
+
+test('leading "at" before a spelled-out hour is stripped from the title', () => {
+  const r = parse('gym at six in the morning', NOW);
+  assert.equal(r.title, 'gym');
+});
+
+test('digit-based times still work unchanged alongside the new spelled-out rule', () => {
+  assert.equal(new Date(parse('call at 6:30pm', NOW).due).getHours(), 18);
+  assert.equal(new Date(parse('call at 6:30pm', NOW).due).getMinutes(), 30);
+});
